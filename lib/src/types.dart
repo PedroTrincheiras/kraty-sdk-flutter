@@ -485,6 +485,14 @@ class LeaderboardEntry {
   final double score;
   final int rank;
 
+  /// `true` when this entry is the player calling the API (resolved from
+  /// the `externalId` passed via `includeSelf`). Highlight rows off this
+  /// rather than matching `participantId` to the external id yourself —
+  /// the server surfaces the internal player UUID, not the external one.
+  /// Always `false` on entries without a self-context request, and on
+  /// bot entries regardless.
+  final bool isSelf;
+
   const LeaderboardEntry({
     required this.participantId,
     required this.kind,
@@ -492,6 +500,7 @@ class LeaderboardEntry {
     required this.avatarUrl,
     required this.score,
     required this.rank,
+    required this.isSelf,
   });
 
   factory LeaderboardEntry.fromJson(JsonMap json) => LeaderboardEntry(
@@ -501,6 +510,10 @@ class LeaderboardEntry {
         avatarUrl: _readNullableString(json, 'avatarUrl'),
         score: _readDouble(json, 'score'),
         rank: _readInt(json, 'rank'),
+        // `isSelf` was added in v0.X — server defaults missing fields to
+        // false anyway, and a missing key here would throw, so default
+        // to `false` when absent to keep older payloads parseable.
+        isSelf: json['isSelf'] is bool ? json['isSelf'] as bool : false,
       );
 }
 
