@@ -1,9 +1,16 @@
-# kraty (Dart/Flutter SDK)
+# kraty (Dart / Flutter client SDK)
 
-Dart/Flutter SDK for the Kraty game-events platform. Targets:
+Dart / Flutter **client** SDK for the [Kraty](https://kraty.io)
+game-events platform. Targets:
 
 - Flutter apps (iOS, Android, web, desktop)
 - Pure-Dart tooling and test suites
+
+> 📖 **Full reference + examples:** <https://kraty.io/docs/sdks/flutter>
+>
+> The docs site has the complete guide — install via git pubspec,
+> per-runtime secret stores, every method, SSE streaming, error
+> handling. This README is the elevator pitch.
 
 The default `SecretStore` auto-selects per runtime:
 `SharedPreferencesSecretStore` inside a Flutter app,

@@ -10,10 +10,9 @@ description: |
   Embedding a server_integration key in a shipped game client is a
   security incident — use the @kraty/server-sdk (Node) from your
   own backend instead.
-version: 0.1.0
-homepage: https://kraty.io
-repository: https://github.com/PedroTrincheiras/kraty-sdk-flutter
-issue_tracker: https://github.com/PedroTrincheiras/kraty-sdk-flutter/issues
+version: 0.2.0
+repository: https://github.com/kraty-team/kraty
+issue_tracker: https://github.com/kraty-team/kraty/issues
 
 environment:
   sdk: ^3.6.0

@@ -157,6 +157,10 @@ class LeaderboardsClient {
   /// Does NOT auto-reconnect on transport drop — surface errors via
   /// the returned stream's `errors` and re-call `live()` after a
   /// backoff if you want resumption.
+  ///
+  /// Low-level — prefer [subscribe] for game UIs; it polls in the
+  /// background so bot scores tick even when no player action would
+  /// otherwise trigger a server-side read.
   Future<LeaderboardStream> live(String leaderboardId) {
     return openLeaderboardStream(
       baseUrl: _client.baseUrlForStreaming,
@@ -167,6 +171,143 @@ class LeaderboardsClient {
       sdkUserAgent: _client.sdkUserAgentForStreaming,
     );
   }
+
+  /// High-level live leaderboard subscription. Composes:
+  ///
+  /// 1. the SSE stream from [live] (real-time push for score updates
+  ///    the server has published), AND
+  /// 2. a periodic background [read] poll that nudges the server's
+  ///    lazy bot evaluator to advance bot scores, then dedupes the
+  ///    resulting deltas against the SSE feed.
+  ///
+  /// Why both: bot scores climb on a schedule (per the event's bot
+  /// definitions) even when no player action would otherwise trigger
+  /// a server-side read. Without the background poll, idle UIs never
+  /// see bots tick. The SSE stream then carries the resulting
+  /// `score_update` events so multiple subscribers per leaderboard
+  /// share one fan-out.
+  ///
+  /// The returned [LiveLeaderboardSubscription] exposes a single
+  /// `events` stream that interleaves SSE pushes + poll-derived
+  /// updates, deduped so the same `(participantId, score)` doesn't
+  /// surface twice. Call `cancel()` to tear down both transports.
+  ///
+  /// Defaults: `pollInterval: const Duration(seconds: 15)`. Set
+  /// `pollInterval: Duration.zero` to disable polling (SSE-only).
+  LiveLeaderboardSubscription subscribe(
+    String leaderboardId, {
+    Duration pollInterval = const Duration(seconds: 15),
+  }) {
+    final eventsCtrl = StreamController<LeaderboardStreamEvent>.broadcast();
+    final errorsCtrl = StreamController<Object>.broadcast();
+    final lastSurfacedScore = <String, double>{};
+    var closed = false;
+    LeaderboardStream? sseHandle;
+    Timer? pollTimer;
+    StreamSubscription<LeaderboardStreamEvent>? sseEventSub;
+    StreamSubscription<Object>? sseErrorSub;
+
+    void surface(LeaderboardStreamEvent ev) {
+      if (closed) return;
+      // Dedup score_update by (participantId, score). Other kinds
+      // (ready, closed, parse-error) always pass through.
+      if (ev.kind == 'score_update') {
+        final pid = ev.data['participantId'];
+        final score = ev.data['score'];
+        if (pid is String && score is num) {
+          final s = score.toDouble();
+          if (lastSurfacedScore[pid] == s) return;
+          lastSurfacedScore[pid] = s;
+        }
+      }
+      eventsCtrl.add(ev);
+    }
+
+    Future<void> pollOnce() async {
+      if (closed) return;
+      try {
+        final lb = await read(leaderboardId);
+        for (final entry in lb.entries) {
+          surface(LeaderboardStreamEvent(kind: 'score_update', data: <String, Object?>{
+            'leaderboardId': lb.leaderboardId,
+            'participantId': entry.participantId,
+            'score': entry.score,
+            'rank': entry.rank,
+          }));
+        }
+      } catch (err) {
+        if (!closed) errorsCtrl.add(err);
+      }
+    }
+
+    // Wire SSE in the background — surface failures on the errors
+    // stream but don't kill the poll loop if SSE drops.
+    Future<void>(() async {
+      try {
+        sseHandle = await live(leaderboardId);
+      } catch (err) {
+        if (!closed) errorsCtrl.add(err);
+        return;
+      }
+      sseEventSub = sseHandle!.events.listen(surface);
+      sseErrorSub = sseHandle!.errors.listen((err) {
+        if (!closed) errorsCtrl.add(err);
+      });
+    });
+
+    // Kick off the poll loop. First read fires immediately so the
+    // initial UI frame has current scores instead of waiting a full
+    // interval. Repeat with Timer.periodic afterwards.
+    if (pollInterval > Duration.zero) {
+      Future<void>(() async {
+        await pollOnce();
+        if (!closed) {
+          pollTimer = Timer.periodic(pollInterval, (_) => pollOnce());
+        }
+      });
+    }
+
+    return LiveLeaderboardSubscription._(
+      eventsCtrl.stream,
+      errorsCtrl.stream,
+      () async {
+        if (closed) return;
+        closed = true;
+        pollTimer?.cancel();
+        await sseEventSub?.cancel();
+        await sseErrorSub?.cancel();
+        if (sseHandle != null) {
+          try { await sseHandle!.cancel(); } catch (_) { /* swallow */ }
+        }
+        await eventsCtrl.close();
+        await errorsCtrl.close();
+      },
+    );
+  }
+}
+
+/// Handle to a combined live + poll subscription from
+/// [LeaderboardsClient.subscribe]. Single `events` stream that
+/// interleaves SSE pushes and poll-derived deltas, plus an `errors`
+/// stream for transport failures. Call [cancel] to tear down both
+/// transports.
+class LiveLeaderboardSubscription {
+  /// Merged event stream — yields `score_update` (deduped per
+  /// participant) plus any other SSE event kinds (`ready`, `closed`,
+  /// `parse-error`). Broadcast-style; safe for multiple listeners.
+  final Stream<LeaderboardStreamEvent> events;
+
+  /// Transport / poll failures. Non-fatal — the subscription keeps
+  /// running. SSE drops don't stop the background poll, and vice
+  /// versa.
+  final Stream<Object> errors;
+
+  final Future<void> Function() _cancel;
+
+  const LiveLeaderboardSubscription._(this.events, this.errors, this._cancel);
+
+  /// Cancels the SSE stream and the background poll. Idempotent.
+  Future<void> cancel() => _cancel();
 }
 
 /// Resource client for `/sdk/v1/players/:p/{pending-grants,grants,crates}`.
