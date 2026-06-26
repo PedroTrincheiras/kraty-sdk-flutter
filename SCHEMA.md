@@ -1,0 +1,157 @@
+# Kraty Flutter SDK — public surface (v0.4.0)
+
+Canonical method + type listing for `kraty` (Dart package). Update this
+file in the same commit as any signature change.
+
+All methods sit on the `Kraty` facade unless noted. Every async method
+returns a `Future`. The optional `as` field on resource calls is for
+server-side tooling.
+
+## `Kraty` facade
+
+```dart
+Kraty(KratyClientOptions options)
+
+String? get activeExternalPlayerId
+Future<(String externalPlayerId, String secret)> ensureIdentity()
+Future<void> signIn(String externalPlayerId, String secret)
+Future<void> logout()
+Future<void> close()  // dispose resources
+```
+
+## `kraty.events` — `EventsClient`
+
+```dart
+Future<List<EventListing>> listForPlayer({String? as})
+Future<StartAttemptResponse> start(String eventKey, {Map<String, Object?>? playerContext, String? idempotencyKey, String? as})
+Future<ProgressResponse> progress(String eventKey, String attemptId, ProgressInput input, {String? as})
+```
+
+## `kraty.leaderboards` — `LeaderboardsClient`
+
+The dashboard-configured cross-event boards. Addressed by stable
+game-scoped **key**.
+
+```dart
+Future<Leaderboard>       read(String key, {LeaderboardReadOptions? options})
+Future<LeaderboardPeriods> listPeriods(String key, {int? limit})
+```
+
+`LeaderboardReadOptions`:
+- `int? limit` — 1–200, default 50 server-side
+- `String? segment` — bucket value for segmented boards (REQUIRED on segmented boards)
+- `String? period` — `"current"` (default) or an ISO timestamp from `LeaderboardPeriod.periodStartedAt`
+- `bool includeSelf` — when true, response includes `self: { rank, score }` (live periods only)
+- `String? externalId` — required when `includeSelf` is true; lazily resolved otherwise
+
+## `kraty.eventLeaderboards` — `EventLeaderboardsClient`
+
+The auto-generated per-event-window leaderboard. Addressed by the
+**UUID** returned in `events.start(...)`'s `attempt.leaderboardId`.
+Includes Server-Sent Events live streaming.
+
+```dart
+Future<EventLeaderboard>       read(String leaderboardId, {EventLeaderboardReadOptions? options})
+Future<LeaderboardStream>      live(String leaderboardId)
+LiveLeaderboardSubscription   subscribe(String leaderboardId, {Duration pollInterval = const Duration(seconds: 15)})
+```
+
+`EventLeaderboardReadOptions`:
+- `int? limit`
+- `bool includeSelf`
+- `String? externalId`
+
+`LiveLeaderboardSubscription`:
+- `Stream<LeaderboardStreamEvent> events` — broadcast stream, deduped by `(participantId, score)`
+- `Stream<Object> errors` — transport / poll failures (non-fatal)
+- `Future<void> cancel()` — idempotent
+
+Set `pollInterval: Duration.zero` to disable polling (SSE-only).
+
+## `kraty.grants` — `GrantsClient`
+
+```dart
+Future<List<Grant>>      listPending({int? limit, String? as})
+Future<Grant>            claim(String grantId, {String? idempotencyKey, String? as})
+Future<OpenCrateResponse> open(String grantId, {String? idempotencyKey, String? as})
+Future<CollectAllResult> collectAll({String? as})
+```
+
+`CollectAllResult`:
+- `List<Grant> opened`
+- `List<Grant> claimed`
+- `List<CollectAllFailure> failures`
+- `bool get hasFailures`
+
+## `kraty.lobbies` — `LobbiesClient`
+
+```dart
+Future<Lobby> read(String lobbyId)
+```
+
+## `kraty.inventory` — `InventoryClient`
+
+```dart
+Future<List<PlayerItemHolding>> list({String? as})
+Future<ConsumeItemResult>       consume(String itemKey, ConsumeItemInput input, {String? as})
+```
+
+## `kraty.wallet` — `WalletClient`
+
+```dart
+Future<List<PlayerWalletHolding>> list({String? as})
+Future<DebitWalletResult>         debit(String economyKey, DebitWalletInput input, {String? as})
+```
+
+## `kraty.players` — `PlayersClient`
+
+```dart
+Future<PlayerRegistration> register(String externalPlayerId, {bool force = false})
+```
+
+## `kraty.catalog` — `CatalogClient`
+
+```dart
+Future<Catalog> get()
+```
+
+## Polling helpers
+
+```dart
+Stream<List<Grant>> pollPendingGrants(GrantsClient grants, {PollPendingGrantsOptions? options})
+Future<Lobby>       pollLobbyUntilActive(LobbiesClient lobbies, String lobbyId, {PollLobbyOptions? options})
+```
+
+## Secret stores
+
+```dart
+abstract class SecretStore { ... }
+class InMemorySecretStore implements SecretStore        // tests
+class DefaultSecretStore implements SecretStore         // best-effort default
+class SharedPreferencesSecretStore implements SecretStore  // wraps shared_preferences
+```
+
+## DTOs (response shapes)
+
+`Attempt`, `StartAttemptResponse`, `ProgressInput`, `ProgressResponse`,
+`MilestoneFired`, `EventListing`, `EntryCost`, `EntryCostCurrency`,
+`EntryCostItem`, `Leaderboard`, `EventLeaderboard`, `LeaderboardEntry`,
+`LeaderboardSelf`, `LeaderboardPeriod`, `LeaderboardPeriods`, `Grant`,
+`OpenCrateResponse`, `Lobby`, `PlayerItemHolding`, `PlayerWalletHolding`,
+`PlayerRegistration`, `ConsumeItemInput`, `ConsumeItemResult`,
+`DebitWalletInput`, `DebitWalletResult`, `Catalog`, `CatalogItem`,
+`CatalogCurrency`, `RewardBundlePreview`, `RewardEntryPreview`,
+`RewardPolicySummary`, `RewardPolicyTier`.
+
+## Errors
+
+```dart
+class KratyApiError extends Error      // non-2xx — has code, status, message
+class KratyNetworkError extends Error  // transport / parse failure
+```
+
+`KratyApiError` boolean helpers:
+`isLobbyForming`, `isInsufficientEntryCost`, `isPlayerSecretInvalid`,
+`isPlayerAlreadyRegistered`, `isEntryRequirementFailed`,
+`isNoLeaderboard`, `isNoActiveWindow`, `isMaxAttemptsReached`,
+`isAttemptExpired`, `isAttemptCompleted`.

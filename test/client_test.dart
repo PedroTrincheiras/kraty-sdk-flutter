@@ -273,8 +273,8 @@ void main() {
       // (Kraty's factory creates its own KratyClient — wire a single fake
       // through by reconstructing manually.)
       final c = KratyClient(_baseOpts(fake));
-      final lb = LeaderboardsClient(c);
-      final board = await lb.read('lb_1', options: const LeaderboardReadOptions(limit: 10));
+      final lb = EventLeaderboardsClient(c);
+      final board = await lb.read('lb_1', options: const EventLeaderboardReadOptions(limit: 10));
       expect(board.leaderboardId, 'lb_1');
       expect(fake.calls[0].url, contains('/sdk/v1/leaderboards/lb_1?limit=10'));
       kraty.close();
@@ -459,7 +459,7 @@ void main() {
       c.close();
     });
 
-    test('leaderboards.read with includeSelf builds the query string', () async {
+    test('eventLeaderboards.read with includeSelf builds the query string', () async {
       final fake = FakeClient()
         ..push(200, body: {
           'data': {
@@ -471,10 +471,10 @@ void main() {
           }
         });
       final c = KratyClient(_baseOpts(fake));
-      final lb = LeaderboardsClient(c);
+      final lb = EventLeaderboardsClient(c);
       final board = await lb.read(
         'lb_self',
-        options: const LeaderboardReadOptions(
+        options: const EventLeaderboardReadOptions(
           limit: 5,
           includeSelf: true,
           externalId: 'alice',
@@ -487,7 +487,7 @@ void main() {
       c.close();
     });
 
-    test('leaderboards.read with includeSelf defaults externalId to the active player', () async {
+    test('eventLeaderboards.read with includeSelf defaults externalId to the active player', () async {
       final fake = FakeClient()
         ..push(201, body: {'data': {'secret': 'auto'}})
         ..push(200, body: {
@@ -500,14 +500,101 @@ void main() {
           }
         });
       final c = KratyClient(_baseOpts(fake));
-      final lb = LeaderboardsClient(c);
-      await lb.read('lb_self', options: const LeaderboardReadOptions(includeSelf: true));
+      final lb = EventLeaderboardsClient(c);
+      await lb.read('lb_self', options: const EventLeaderboardReadOptions(includeSelf: true));
       // First call registered a fresh player, second carries the
       // lazy-minted id as externalId.
       expect(fake.calls[0].url, contains('/register'));
       final selfId = c.activeExternalPlayerId!;
       expect(fake.calls[1].url, contains('includeSelf=true'));
       expect(fake.calls[1].url, contains('externalId=$selfId'));
+      c.close();
+    });
+
+    test('leaderboards.read hits the keyed shared route', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'key': 'weekly_global',
+            'sharedLeaderboardId': 'slb_1',
+            'scope': 'game',
+            'resetCadence': 'weekly',
+            'scoreAggregation': 'best',
+            'segment': null,
+            'period': '2026-06-22T00:00:00Z',
+            'entries': [
+              {'participantId': 'p1', 'kind': 'player', 'name': 'alice', 'avatarUrl': null, 'score': 42, 'rank': 1, 'isSelf': false}
+            ],
+            'self': null,
+          }
+        });
+      final c = KratyClient(_baseOpts(fake));
+      final lb = LeaderboardsClient(c);
+      final board = await lb.read('weekly_global', options: const LeaderboardReadOptions(limit: 10));
+      expect(board.key, 'weekly_global');
+      expect(board.sharedLeaderboardId, 'slb_1');
+      expect(board.entries.length, 1);
+      expect(fake.calls[0].url, contains('/sdk/v1/shared-leaderboards/weekly_global?limit=10'));
+      c.close();
+    });
+
+    test('leaderboards.read passes segment + period + includeSelf', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'key': 'weekly_region',
+            'sharedLeaderboardId': 'slb_2',
+            'scope': 'game',
+            'resetCadence': 'weekly',
+            'scoreAggregation': 'best',
+            'segment': 'eu',
+            'period': '2026-06-15T00:00:00Z',
+            'entries': <Object>[],
+            'self': {'rank': 7, 'score': 100},
+          }
+        });
+      final c = KratyClient(_baseOpts(fake));
+      final lb = LeaderboardsClient(c);
+      final board = await lb.read(
+        'weekly_region',
+        options: const LeaderboardReadOptions(
+          limit: 25,
+          segment: 'eu',
+          period: '2026-06-15T00:00:00Z',
+          includeSelf: true,
+          externalId: 'alice',
+        ),
+      );
+      expect(board.segment, 'eu');
+      expect(board.self?.rank, 7);
+      final url = fake.calls[0].url;
+      expect(url, contains('limit=25'));
+      expect(url, contains('segment=eu'));
+      expect(url, contains('period=2026-06-15T00%3A00%3A00Z'));
+      expect(url, contains('includeSelf=true'));
+      expect(url, contains('externalId=alice'));
+      c.close();
+    });
+
+    test('leaderboards.listPeriods decodes newest-first periods', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'key': 'weekly_global',
+            'sharedLeaderboardId': 'slb_1',
+            'currentPeriodStartedAt': '2026-06-22T00:00:00Z',
+            'periods': [
+              {'periodStartedAt': '2026-06-15T00:00:00Z', 'periodEndedAt': '2026-06-22T00:00:00Z'},
+              {'periodStartedAt': '2026-06-08T00:00:00Z', 'periodEndedAt': '2026-06-15T00:00:00Z'},
+            ],
+          }
+        });
+      final c = KratyClient(_baseOpts(fake));
+      final lb = LeaderboardsClient(c);
+      final resp = await lb.listPeriods('weekly_global', limit: 5);
+      expect(resp.periods.length, 2);
+      expect(resp.periods[0].periodStartedAt, '2026-06-15T00:00:00Z');
+      expect(fake.calls[0].url, contains('/sdk/v1/shared-leaderboards/weekly_global/periods?limit=5'));
       c.close();
     });
   });

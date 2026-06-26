@@ -29,6 +29,7 @@ export 'src/resources.dart' show
     CatalogClient,
     CollectAllFailure,
     CollectAllResult,
+    EventLeaderboardsClient,
     EventsClient,
     GrantsClient,
     InventoryClient,
@@ -52,10 +53,14 @@ export 'src/types.dart' show
     EntryCost,
     EntryCostCurrency,
     EntryCostItem,
+    EventLeaderboard,
+    EventLeaderboardReadOptions,
     EventListing,
     Grant,
     Leaderboard,
     LeaderboardEntry,
+    LeaderboardPeriod,
+    LeaderboardPeriods,
     LeaderboardReadOptions,
     LeaderboardSelf,
     Lobby,
@@ -98,6 +103,7 @@ class Kraty {
   final KratyClient client;
   final EventsClient events;
   final LeaderboardsClient leaderboards;
+  final EventLeaderboardsClient eventLeaderboards;
   final GrantsClient grants;
   final LobbiesClient lobbies;
   final InventoryClient inventory;
@@ -109,6 +115,7 @@ class Kraty {
     required this.client,
     required this.events,
     required this.leaderboards,
+    required this.eventLeaderboards,
     required this.grants,
     required this.lobbies,
     required this.inventory,
@@ -123,6 +130,7 @@ class Kraty {
       client: c,
       events: EventsClient(c),
       leaderboards: LeaderboardsClient(c),
+      eventLeaderboards: EventLeaderboardsClient(c),
       grants: GrantsClient(c),
       lobbies: LobbiesClient(c),
       inventory: InventoryClient(c),

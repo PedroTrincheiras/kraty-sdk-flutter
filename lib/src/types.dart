@@ -529,14 +529,17 @@ class LeaderboardSelf {
       );
 }
 
-class Leaderboard {
+/// The auto-generated per-event-window leaderboard, addressed by the
+/// UUID returned in `events.start(...)`'s `attempt.leaderboardId`. For
+/// the dashboard-configured cross-event boards, see [Leaderboard].
+class EventLeaderboard {
   final String leaderboardId;
   final String mode;
   final bool finalized;
   final List<LeaderboardEntry> entries;
   final LeaderboardSelf? self;
 
-  const Leaderboard({
+  const EventLeaderboard({
     required this.leaderboardId,
     required this.mode,
     required this.finalized,
@@ -544,7 +547,7 @@ class Leaderboard {
     required this.self,
   });
 
-  factory Leaderboard.fromJson(JsonMap json) => Leaderboard(
+  factory EventLeaderboard.fromJson(JsonMap json) => EventLeaderboard(
         leaderboardId: _readString(json, 'leaderboardId'),
         mode: _readString(json, 'mode'),
         finalized: _readBool(json, 'finalized'),
@@ -554,6 +557,97 @@ class Leaderboard {
         self: json['self'] is Map
             ? LeaderboardSelf.fromJson(json['self']! as JsonMap)
             : null,
+      );
+}
+
+/// The dashboard-configured cross-event leaderboard, addressed by its
+/// game-scoped `key` (e.g. `"weekly_global"`). The primary surface for
+/// most game UI. For the auto-created per-event-window boards, see
+/// [EventLeaderboard].
+class Leaderboard {
+  /// The board's stable game-scoped key.
+  final String key;
+
+  /// UUID of the leaderboard config row.
+  final String sharedLeaderboardId;
+
+  final String? scope;
+  final String? resetCadence;
+  final String? scoreAggregation;
+
+  /// Resolved segment bucket for segmented boards; `null` on unsegmented.
+  final String? segment;
+
+  /// ISO timestamp of the period this snapshot is from.
+  final String period;
+
+  final List<LeaderboardEntry> entries;
+  final LeaderboardSelf? self;
+
+  const Leaderboard({
+    required this.key,
+    required this.sharedLeaderboardId,
+    required this.scope,
+    required this.resetCadence,
+    required this.scoreAggregation,
+    required this.segment,
+    required this.period,
+    required this.entries,
+    required this.self,
+  });
+
+  factory Leaderboard.fromJson(JsonMap json) => Leaderboard(
+        key: _readString(json, 'key'),
+        sharedLeaderboardId: _readString(json, 'sharedLeaderboardId'),
+        scope: _readNullableString(json, 'scope'),
+        resetCadence: _readNullableString(json, 'resetCadence'),
+        scoreAggregation: _readNullableString(json, 'scoreAggregation'),
+        segment: _readNullableString(json, 'segment'),
+        period: _readString(json, 'period'),
+        entries: (json['entries'] as List? ?? const [])
+            .map((e) => LeaderboardEntry.fromJson(e as JsonMap))
+            .toList(),
+        self: json['self'] is Map
+            ? LeaderboardSelf.fromJson(json['self']! as JsonMap)
+            : null,
+      );
+}
+
+class LeaderboardPeriod {
+  final String periodStartedAt;
+  final String periodEndedAt;
+
+  const LeaderboardPeriod({
+    required this.periodStartedAt,
+    required this.periodEndedAt,
+  });
+
+  factory LeaderboardPeriod.fromJson(JsonMap json) => LeaderboardPeriod(
+        periodStartedAt: _readString(json, 'periodStartedAt'),
+        periodEndedAt: _readString(json, 'periodEndedAt'),
+      );
+}
+
+class LeaderboardPeriods {
+  final String key;
+  final String sharedLeaderboardId;
+  final String currentPeriodStartedAt;
+  final List<LeaderboardPeriod> periods;
+
+  const LeaderboardPeriods({
+    required this.key,
+    required this.sharedLeaderboardId,
+    required this.currentPeriodStartedAt,
+    required this.periods,
+  });
+
+  factory LeaderboardPeriods.fromJson(JsonMap json) => LeaderboardPeriods(
+        key: _readString(json, 'key'),
+        sharedLeaderboardId: _readString(json, 'sharedLeaderboardId'),
+        currentPeriodStartedAt: _readString(json, 'currentPeriodStartedAt'),
+        periods: (json['periods'] as List? ?? const [])
+            .map((e) => LeaderboardPeriod.fromJson(e as JsonMap))
+            .toList(),
       );
 }
 
@@ -925,13 +1019,41 @@ class LeaderboardReadOptions {
   /// 1–200, default 50 server-side.
   final int? limit;
 
-  /// When true, response includes `self: { rank, score }`.
+  /// Bucket value for segmented boards. Required when the board has
+  /// `segmentation.key` set.
+  final String? segment;
+
+  /// `"current"` (default) reads the live ranks. An ISO timestamp from
+  /// `listPeriods(...)` reads the historical snapshot.
+  final String? period;
+
+  /// When true, response includes `self: { rank, score }` (live only).
   final bool includeSelf;
 
   /// Required when [includeSelf] is true.
   final String? externalId;
 
   const LeaderboardReadOptions({
+    this.limit,
+    this.segment,
+    this.period,
+    this.includeSelf = false,
+    this.externalId,
+  });
+}
+
+/// Per-call options for `EventLeaderboardsClient.read`.
+class EventLeaderboardReadOptions {
+  /// 1–200, default 50 server-side.
+  final int? limit;
+
+  /// When true, response includes `self: { rank, score }`.
+  final bool includeSelf;
+
+  /// Required when [includeSelf] is true.
+  final String? externalId;
+
+  const EventLeaderboardReadOptions({
     this.limit,
     this.includeSelf = false,
     this.externalId,

@@ -110,17 +110,77 @@ class EventsClient {
   }
 }
 
-/// Resource client for `/sdk/v1/leaderboards/:id`.
+/// Resource client for `/sdk/v1/shared-leaderboards/:key` — the
+/// dashboard-configured cross-event boards your studio defines. For
+/// the auto-created per-event-window boards addressed by UUID, see
+/// [EventLeaderboardsClient].
 class LeaderboardsClient {
   final KratyClient _client;
 
   LeaderboardsClient(this._client);
 
+  /// `GET /sdk/v1/shared-leaderboards/:key` — snapshot read of a
+  /// dashboard-configured cross-event leaderboard.
   Future<Leaderboard> read(
-    String leaderboardId, {
+    String key, {
     LeaderboardReadOptions? options,
   }) async {
     final opts = options ?? const LeaderboardReadOptions();
+    final qs = <String>[];
+    if (opts.limit != null) qs.add('limit=${opts.limit}');
+    if (opts.segment != null && opts.segment!.isNotEmpty) {
+      qs.add('segment=${_enc(opts.segment!)}');
+    }
+    if (opts.period != null && opts.period!.isNotEmpty) {
+      qs.add('period=${_enc(opts.period!)}');
+    }
+    if (opts.includeSelf) {
+      final selfId = (opts.externalId != null && opts.externalId!.isNotEmpty)
+          ? opts.externalId!
+          : await _resolvePlayerId(_client, null);
+      qs.add('includeSelf=true');
+      qs.add('externalId=${_enc(selfId)}');
+    }
+    final path = qs.isEmpty
+        ? '/sdk/v1/shared-leaderboards/${_enc(key)}'
+        : '/sdk/v1/shared-leaderboards/${_enc(key)}?${qs.join('&')}';
+    final env = await _client.request(method: 'GET', path: path);
+    return _data<Leaderboard>(env, (raw) {
+      if (raw is Map) return Leaderboard.fromJson(raw.cast<String, Object?>());
+      return Leaderboard.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `GET /sdk/v1/shared-leaderboards/:key/periods` — newest-first list
+  /// of finalized snapshot periods. Pair with [read] +
+  /// `LeaderboardReadOptions.period` to render "last week's top 10".
+  Future<LeaderboardPeriods> listPeriods(String key, {int? limit}) async {
+    final path = limit == null
+        ? '/sdk/v1/shared-leaderboards/${_enc(key)}/periods'
+        : '/sdk/v1/shared-leaderboards/${_enc(key)}/periods?limit=$limit';
+    final env = await _client.request(method: 'GET', path: path);
+    return _data<LeaderboardPeriods>(env, (raw) {
+      if (raw is Map) return LeaderboardPeriods.fromJson(raw.cast<String, Object?>());
+      return LeaderboardPeriods.fromJson(const <String, Object?>{});
+    });
+  }
+}
+
+/// Resource client for `/sdk/v1/leaderboards/:id` — the auto-generated
+/// per-event-window leaderboard, addressed by the UUID
+/// `events.start(...)` returns in `attempt.leaderboardId`. Includes
+/// Server-Sent-Events live streaming. For the dashboard-configured
+/// cross-event boards, see [LeaderboardsClient].
+class EventLeaderboardsClient {
+  final KratyClient _client;
+
+  EventLeaderboardsClient(this._client);
+
+  Future<EventLeaderboard> read(
+    String leaderboardId, {
+    EventLeaderboardReadOptions? options,
+  }) async {
+    final opts = options ?? const EventLeaderboardReadOptions();
     final qs = <String>[];
     if (opts.limit != null) qs.add('limit=${opts.limit}');
     if (opts.includeSelf) {
@@ -134,9 +194,9 @@ class LeaderboardsClient {
         ? '/sdk/v1/leaderboards/${_enc(leaderboardId)}'
         : '/sdk/v1/leaderboards/${_enc(leaderboardId)}?${qs.join('&')}';
     final env = await _client.request(method: 'GET', path: path);
-    return _data<Leaderboard>(env, (raw) {
-      if (raw is Map) return Leaderboard.fromJson(raw.cast<String, Object?>());
-      return Leaderboard.fromJson(const <String, Object?>{});
+    return _data<EventLeaderboard>(env, (raw) {
+      if (raw is Map) return EventLeaderboard.fromJson(raw.cast<String, Object?>());
+      return EventLeaderboard.fromJson(const <String, Object?>{});
     });
   }
 
