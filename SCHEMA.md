@@ -1,4 +1,4 @@
-# Kraty Flutter SDK — public surface (v0.4.0)
+# Kraty Flutter SDK — public surface (v0.4.1)
 
 Canonical method + type listing for `kraty` (Dart package). Update this
 file in the same commit as any signature change.
@@ -30,7 +30,10 @@ Future<ProgressResponse> progress(String eventKey, String attemptId, ProgressInp
 ## `kraty.leaderboards` — `LeaderboardsClient`
 
 The dashboard-configured cross-event boards. Addressed by stable
-game-scoped **key**.
+game-scoped **key**. Wire endpoints:
+
+- `GET /sdk/v1/leaderboards/:key`
+- `GET /sdk/v1/leaderboards/:key/periods`
 
 ```dart
 Future<Leaderboard>       read(String key, {LeaderboardReadOptions? options})
@@ -48,7 +51,10 @@ Future<LeaderboardPeriods> listPeriods(String key, {int? limit})
 
 The auto-generated per-event-window leaderboard. Addressed by the
 **UUID** returned in `events.start(...)`'s `attempt.leaderboardId`.
-Includes Server-Sent Events live streaming.
+Includes Server-Sent Events live streaming. Wire endpoints:
+
+- `GET /sdk/v1/event-leaderboards/:id`
+- `GET /sdk/v1/event-leaderboards/:id/stream`
 
 ```dart
 Future<EventLeaderboard>       read(String leaderboardId, {EventLeaderboardReadOptions? options})
