@@ -134,7 +134,7 @@ void main() {
         });
       final client = KratyClient(_baseOpts(fake));
       await expectLater(
-        client.request(method: 'GET', path: '/sdk/v1/leaderboards/missing'),
+        client.request(method: 'GET', path: '/sdk/v1/event-leaderboards/missing'),
         throwsA(
           isA<KratyApiError>()
               .having((e) => e.status, 'status', 404)
@@ -276,7 +276,7 @@ void main() {
       final lb = EventLeaderboardsClient(c);
       final board = await lb.read('lb_1', options: const EventLeaderboardReadOptions(limit: 10));
       expect(board.leaderboardId, 'lb_1');
-      expect(fake.calls[0].url, contains('/sdk/v1/leaderboards/lb_1?limit=10'));
+      expect(fake.calls[0].url, contains('/sdk/v1/event-leaderboards/lb_1?limit=10'));
       kraty.close();
       c.close();
     });
@@ -534,7 +534,7 @@ void main() {
       expect(board.key, 'weekly_global');
       expect(board.sharedLeaderboardId, 'slb_1');
       expect(board.entries.length, 1);
-      expect(fake.calls[0].url, contains('/sdk/v1/shared-leaderboards/weekly_global?limit=10'));
+      expect(fake.calls[0].url, contains('/sdk/v1/leaderboards/weekly_global?limit=10'));
       c.close();
     });
 
@@ -594,7 +594,7 @@ void main() {
       final resp = await lb.listPeriods('weekly_global', limit: 5);
       expect(resp.periods.length, 2);
       expect(resp.periods[0].periodStartedAt, '2026-06-15T00:00:00Z');
-      expect(fake.calls[0].url, contains('/sdk/v1/shared-leaderboards/weekly_global/periods?limit=5'));
+      expect(fake.calls[0].url, contains('/sdk/v1/leaderboards/weekly_global/periods?limit=5'));
       c.close();
     });
   });

@@ -64,7 +64,7 @@ Future<LeaderboardStream> openLeaderboardStream({
 }) async {
   final req = http.Request(
     'GET',
-    Uri.parse('$baseUrl/sdk/v1/leaderboards/$leaderboardId/stream'),
+    Uri.parse('$baseUrl/sdk/v1/event-leaderboards/$leaderboardId/stream'),
   );
   req.headers['authorization'] = authHeader;
   req.headers['accept'] = 'text/event-stream';

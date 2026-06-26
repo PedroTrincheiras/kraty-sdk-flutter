@@ -110,7 +110,7 @@ class EventsClient {
   }
 }
 
-/// Resource client for `/sdk/v1/shared-leaderboards/:key` — the
+/// Resource client for `/sdk/v1/leaderboards/:key` — the
 /// dashboard-configured cross-event boards your studio defines. For
 /// the auto-created per-event-window boards addressed by UUID, see
 /// [EventLeaderboardsClient].
@@ -119,7 +119,7 @@ class LeaderboardsClient {
 
   LeaderboardsClient(this._client);
 
-  /// `GET /sdk/v1/shared-leaderboards/:key` — snapshot read of a
+  /// `GET /sdk/v1/leaderboards/:key` — snapshot read of a
   /// dashboard-configured cross-event leaderboard.
   Future<Leaderboard> read(
     String key, {
@@ -142,8 +142,8 @@ class LeaderboardsClient {
       qs.add('externalId=${_enc(selfId)}');
     }
     final path = qs.isEmpty
-        ? '/sdk/v1/shared-leaderboards/${_enc(key)}'
-        : '/sdk/v1/shared-leaderboards/${_enc(key)}?${qs.join('&')}';
+        ? '/sdk/v1/leaderboards/${_enc(key)}'
+        : '/sdk/v1/leaderboards/${_enc(key)}?${qs.join('&')}';
     final env = await _client.request(method: 'GET', path: path);
     return _data<Leaderboard>(env, (raw) {
       if (raw is Map) return Leaderboard.fromJson(raw.cast<String, Object?>());
@@ -151,13 +151,13 @@ class LeaderboardsClient {
     });
   }
 
-  /// `GET /sdk/v1/shared-leaderboards/:key/periods` — newest-first list
+  /// `GET /sdk/v1/leaderboards/:key/periods` — newest-first list
   /// of finalized snapshot periods. Pair with [read] +
   /// `LeaderboardReadOptions.period` to render "last week's top 10".
   Future<LeaderboardPeriods> listPeriods(String key, {int? limit}) async {
     final path = limit == null
-        ? '/sdk/v1/shared-leaderboards/${_enc(key)}/periods'
-        : '/sdk/v1/shared-leaderboards/${_enc(key)}/periods?limit=$limit';
+        ? '/sdk/v1/leaderboards/${_enc(key)}/periods'
+        : '/sdk/v1/leaderboards/${_enc(key)}/periods?limit=$limit';
     final env = await _client.request(method: 'GET', path: path);
     return _data<LeaderboardPeriods>(env, (raw) {
       if (raw is Map) return LeaderboardPeriods.fromJson(raw.cast<String, Object?>());
@@ -166,7 +166,7 @@ class LeaderboardsClient {
   }
 }
 
-/// Resource client for `/sdk/v1/leaderboards/:id` — the auto-generated
+/// Resource client for `/sdk/v1/event-leaderboards/:id` — the auto-generated
 /// per-event-window leaderboard, addressed by the UUID
 /// `events.start(...)` returns in `attempt.leaderboardId`. Includes
 /// Server-Sent-Events live streaming. For the dashboard-configured
@@ -191,8 +191,8 @@ class EventLeaderboardsClient {
       qs.add('externalId=${_enc(selfId)}');
     }
     final path = qs.isEmpty
-        ? '/sdk/v1/leaderboards/${_enc(leaderboardId)}'
-        : '/sdk/v1/leaderboards/${_enc(leaderboardId)}?${qs.join('&')}';
+        ? '/sdk/v1/event-leaderboards/${_enc(leaderboardId)}'
+        : '/sdk/v1/event-leaderboards/${_enc(leaderboardId)}?${qs.join('&')}';
     final env = await _client.request(method: 'GET', path: path);
     return _data<EventLeaderboard>(env, (raw) {
       if (raw is Map) return EventLeaderboard.fromJson(raw.cast<String, Object?>());
@@ -200,7 +200,7 @@ class EventLeaderboardsClient {
     });
   }
 
-  /// `GET /sdk/v1/leaderboards/:id/stream` — opens a Server-Sent
+  /// `GET /sdk/v1/event-leaderboards/:id/stream` — opens a Server-Sent
   /// Events subscription that pushes score updates in real time.
   /// Returns a [LeaderboardStream] handle the caller drives via
   /// its `events` stream + `cancel()` method.
