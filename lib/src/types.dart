@@ -29,6 +29,13 @@ int _readInt(JsonMap json, String key) {
   return 0;
 }
 
+int? _readNullableInt(JsonMap json, String key) {
+  final v = json[key];
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return null;
+}
+
 bool _readBool(JsonMap json, String key) =>
     json[key] is bool ? json[key]! as bool : false;
 
@@ -613,6 +620,34 @@ class Leaderboard {
       );
 }
 
+/// Result of `LeaderboardsClient.submitScore` — the player's new
+/// standing on the board after the write. [rank] is `null` when the
+/// board can't resolve a position for the caller yet (e.g. the period
+/// just rolled over, or the score didn't beat a `best`-aggregation
+/// board's existing entry).
+class LeaderboardScoreResult {
+  /// UUID of the leaderboard config row the score landed on.
+  final String leaderboardId;
+
+  /// The score now recorded for the player on this board.
+  final num score;
+
+  /// The player's rank after the write, or `null` if not yet ranked.
+  final int? rank;
+
+  const LeaderboardScoreResult({
+    required this.leaderboardId,
+    required this.score,
+    required this.rank,
+  });
+
+  factory LeaderboardScoreResult.fromJson(JsonMap json) => LeaderboardScoreResult(
+        leaderboardId: _readString(json, 'leaderboardId'),
+        score: _readDouble(json, 'score'),
+        rank: _readNullableInt(json, 'rank'),
+      );
+}
+
 class LeaderboardPeriod {
   final String periodStartedAt;
   final String periodEndedAt;
@@ -1019,8 +1054,10 @@ class LeaderboardReadOptions {
   /// 1–200, default 50 server-side.
   final int? limit;
 
-  /// Bucket value for segmented boards. Required when the board has
-  /// `segmentation.key` set.
+  /// Bucket value for segmented boards. Required only for `context`
+  /// segmentation. For `progression`-segmented boards leave it null —
+  /// the server derives the caller's division. Unsegmented boards
+  /// ignore it.
   final String? segment;
 
   /// `"current"` (default) reads the live ranks. An ISO timestamp from

@@ -62,6 +62,7 @@ export 'src/types.dart' show
     LeaderboardPeriod,
     LeaderboardPeriods,
     LeaderboardReadOptions,
+    LeaderboardScoreResult,
     LeaderboardSelf,
     Lobby,
     MilestoneFired,

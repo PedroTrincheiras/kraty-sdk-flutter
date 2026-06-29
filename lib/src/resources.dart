@@ -121,6 +121,11 @@ class LeaderboardsClient {
 
   /// `GET /sdk/v1/leaderboards/:key` — snapshot read of a
   /// dashboard-configured cross-event leaderboard.
+  ///
+  /// `options.segment` is required only for `context`-segmented
+  /// boards — pass the bucket value. For `progression`-segmented
+  /// boards omit it; the server derives the caller's division.
+  /// Unsegmented boards ignore it.
   Future<Leaderboard> read(
     String key, {
     LeaderboardReadOptions? options,
@@ -148,6 +153,48 @@ class LeaderboardsClient {
     return _data<Leaderboard>(env, (raw) {
       if (raw is Map) return Leaderboard.fromJson(raw.cast<String, Object?>());
       return Leaderboard.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `POST /sdk/v1/players/:p/leaderboards/:key/score` — submit a
+  /// score for the active player directly to a dashboard-configured
+  /// board, outside an event attempt. Returns the player's new score
+  /// + rank.
+  ///
+  /// [segment] is required only for `context`-segmented boards (pass
+  /// the bucket value). For `progression`-segmented boards omit it —
+  /// the server derives the player's division; unsegmented boards
+  /// ignore it. Auto-stamped idempotency key unless you pass
+  /// [idempotencyKey].
+  ///
+  /// Throws [KratyApiError]: `client_scoring_disabled` (403) when the
+  /// board is server-only, `score_not_supported` (400) on a
+  /// progression-ranked board, `not_found` (404), `validation_failed`
+  /// (400). Pass `as:` to address a different player (server-side
+  /// tooling only).
+  Future<LeaderboardScoreResult> submitScore(
+    String key,
+    num value, {
+    String? segment,
+    String? idempotencyKey,
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/leaderboards/${_enc(key)}/score',
+      body: <String, Object?>{
+        'value': value,
+        if (segment != null && segment.isNotEmpty) 'segment': segment,
+        if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+      },
+    );
+    return _data<LeaderboardScoreResult>(env, (raw) {
+      if (raw is Map) {
+        return LeaderboardScoreResult.fromJson(raw.cast<String, Object?>());
+      }
+      return LeaderboardScoreResult.fromJson(const <String, Object?>{});
     });
   }
 
