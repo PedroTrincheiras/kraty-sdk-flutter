@@ -198,6 +198,86 @@ class LeaderboardsClient {
     });
   }
 
+  /// `POST /sdk/v1/players/:p/leaderboards/:key/join` — add the active
+  /// player to a dashboard-configured board at score 0 WITHOUT
+  /// submitting a score (they just "appear"), and return the current
+  /// standings for their segment. Idempotent — never resets an
+  /// existing score.
+  ///
+  /// [segment] is the bucket value for `context`-segmented boards;
+  /// derived server-side for `progression` boards. The returned
+  /// [Leaderboard.joined] is `true`. Pass `as:` to address a different
+  /// player (server-side tooling only).
+  Future<Leaderboard> join(
+    String key, {
+    String? segment,
+    int? limit,
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final qs = limit != null ? '?limit=$limit' : '';
+    final env = await _client.request(
+      method: 'POST',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/leaderboards/${_enc(key)}/join$qs',
+      body: <String, Object?>{
+        if (segment != null && segment.isNotEmpty) 'segment': segment,
+      },
+    );
+    return _data<Leaderboard>(env, (raw) {
+      if (raw is Map) return Leaderboard.fromJson(raw.cast<String, Object?>());
+      return Leaderboard.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `GET /sdk/v1/leaderboards/:key/standings` — flexible multi-segment
+  /// read. Returns one [StandingsSegment] block per segment
+  /// (`options.scope` picks which), each flagging the caller (`isSelf`
+  /// on entries, `selfRank`, `participated`). Works live
+  /// (`period: "current"`) or for a past period.
+  ///
+  /// Use this over [read] when you want "my division"
+  /// (`scope: "self_segment"`), "every division I'm in"
+  /// (`scope: "mine"`), or the whole ladder (`scope: "all"`, the
+  /// default). `self_segment`/`mine` resolve the caller from
+  /// `options.externalId` (or the SDK's active identity).
+  Future<BoardStandings> standings(
+    String key, {
+    StandingsReadOptions? options,
+  }) async {
+    final opts = options ?? const StandingsReadOptions();
+    final scope = (opts.scope != null && opts.scope!.isNotEmpty)
+        ? opts.scope!
+        : 'all';
+    final qs = <String>['scope=${_enc(scope)}'];
+    if (opts.segment != null && opts.segment!.isNotEmpty) {
+      qs.add('segment=${_enc(opts.segment!)}');
+    }
+    if (opts.period != null && opts.period!.isNotEmpty) {
+      qs.add('period=${_enc(opts.period!)}');
+    }
+    if (opts.limit != null) qs.add('limit=${opts.limit}');
+    if (opts.maxSegments != null) qs.add('maxSegments=${opts.maxSegments}');
+    // self_segment / mine need a caller; auto-resolve the active
+    // identity when the dev didn't pass one explicitly.
+    var externalId = opts.externalId;
+    if ((externalId == null || externalId.isEmpty) &&
+        (scope == 'self_segment' || scope == 'mine')) {
+      externalId = await _resolvePlayerId(_client, null);
+    }
+    if (externalId != null && externalId.isNotEmpty) {
+      qs.add('externalId=${_enc(externalId)}');
+    }
+    final env = await _client.request(
+      method: 'GET',
+      path: '/sdk/v1/leaderboards/${_enc(key)}/standings?${qs.join('&')}',
+    );
+    return _data<BoardStandings>(env, (raw) {
+      if (raw is Map) return BoardStandings.fromJson(raw.cast<String, Object?>());
+      return BoardStandings.fromJson(const <String, Object?>{});
+    });
+  }
+
   /// `GET /sdk/v1/leaderboards/:key/periods` — newest-first list
   /// of finalized snapshot periods. Pair with [read] +
   /// `LeaderboardReadOptions.period` to render "last week's top 10".
@@ -241,6 +321,33 @@ class EventLeaderboardsClient {
         ? '/sdk/v1/event-leaderboards/${_enc(leaderboardId)}'
         : '/sdk/v1/event-leaderboards/${_enc(leaderboardId)}?${qs.join('&')}';
     final env = await _client.request(method: 'GET', path: path);
+    return _data<EventLeaderboard>(env, (raw) {
+      if (raw is Map) return EventLeaderboard.fromJson(raw.cast<String, Object?>());
+      return EventLeaderboard.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `POST /sdk/v1/players/:p/event-leaderboards/:id/join` — add the
+  /// active player to a per-event-window board at score 0 WITHOUT
+  /// starting a scoring attempt, and return the current board. The
+  /// returned [EventLeaderboard.joined] is `true`. Idempotent.
+  ///
+  /// Throws [KratyApiError] with code `conflict` (409) once the window
+  /// has been finalized. Pass `as:` to address a different player
+  /// (server-side tooling only).
+  Future<EventLeaderboard> join(
+    String leaderboardId, {
+    int? limit,
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final qs = limit != null ? '?limit=$limit' : '';
+    final env = await _client.request(
+      method: 'POST',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/event-leaderboards/${_enc(leaderboardId)}/join$qs',
+      body: const <String, Object?>{},
+    );
     return _data<EventLeaderboard>(env, (raw) {
       if (raw is Map) return EventLeaderboard.fromJson(raw.cast<String, Object?>());
       return EventLeaderboard.fromJson(const <String, Object?>{});

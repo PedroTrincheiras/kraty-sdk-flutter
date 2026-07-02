@@ -43,6 +43,7 @@ export 'src/resources.dart' show
     pollPendingGrants;
 export 'src/types.dart' show
     Attempt,
+    BoardStandings,
     Catalog,
     CatalogCurrency,
     CatalogItem,
@@ -76,7 +77,9 @@ export 'src/types.dart' show
     RewardBundlePreview,
     RewardEntryPreview,
     RewardPolicySummary,
-    RewardPolicyTier;
+    RewardPolicyTier,
+    StandingsReadOptions,
+    StandingsSegment;
 
 import 'src/client.dart';
 import 'src/resources.dart';

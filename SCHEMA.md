@@ -1,4 +1,4 @@
-# Kraty Flutter SDK — public surface (v0.4.1)
+# Kraty Flutter SDK — public surface (v0.6.0)
 
 Canonical method + type listing for `kraty` (Dart package). Update this
 file in the same commit as any signature change.
@@ -33,13 +33,17 @@ The dashboard-configured cross-event boards. Addressed by stable
 game-scoped **key**. Wire endpoints:
 
 - `GET /sdk/v1/leaderboards/:key`
+- `GET /sdk/v1/leaderboards/:key/standings`
 - `GET /sdk/v1/leaderboards/:key/periods`
+- `POST /sdk/v1/players/:externalId/leaderboards/:key/join`
 - `POST /sdk/v1/players/:externalId/leaderboards/:key/score`
 
 ```dart
-Future<Leaderboard>        read(String key, {LeaderboardReadOptions? options})
+Future<Leaderboard>            read(String key, {LeaderboardReadOptions? options})
+Future<Leaderboard>            join(String key, {int? limit, String? segment, String? as})
+Future<BoardStandings>         standings(String key, {StandingsReadOptions? options})
 Future<LeaderboardScoreResult> submitScore(String key, num value, {String? segment, String? idempotencyKey, String? as})
-Future<LeaderboardPeriods> listPeriods(String key, {int? limit})
+Future<LeaderboardPeriods>     listPeriods(String key, {int? limit})
 ```
 
 `LeaderboardReadOptions`:
@@ -48,6 +52,19 @@ Future<LeaderboardPeriods> listPeriods(String key, {int? limit})
 - `String? period` — `"current"` (default) or an ISO timestamp from `LeaderboardPeriod.periodStartedAt`
 - `bool includeSelf` — when true, response includes `self: { rank, score }` (live periods only)
 - `String? externalId` — required when `includeSelf` is true; lazily resolved otherwise
+
+`join` — enrols the active player at score 0 without submitting a score; returns the current standings with `joined: true`. Idempotent (never resets an existing score). Pass `segment` for `context` boards; omit for `progression` boards (server derives the division from the caller's balance).
+
+`standings` — multi-segment read. Returns one `StandingsSegment` block per segment selected by `scope`. `StandingsReadOptions`:
+- `String? scope` — `'self_segment'`, `'mine'`, `'segment'`, `'all'` (default `'all'`)
+- `String? segment` — required when `scope == 'segment'` on a segmented board
+- `String? period` — `'current'` (default) or an ISO timestamp from `listPeriods`
+- `String? externalId` — auto-resolved for `self_segment` / `mine`
+- `int? limit` — per-segment top-N (1..200, default 50)
+- `int? maxSegments` — cap on returned segment blocks (1..100, default 20)
+
+`BoardStandings`: `key`, `sharedLeaderboardId`, `scope`, `resetCadence`, `scoreAggregation`, `period`, `List<StandingsSegment> segments`, `bool segmentsTruncated`.
+`StandingsSegment`: `String? segment`, `bool participated`, `int? selfRank`, `List<LeaderboardEntry> entries`.
 
 `submitScore` — submit a score for the active player directly to the board, outside an event attempt. `segment` is required only for `context` segmentation; omit for `progression` boards (server derives the division); unsegmented boards ignore it. Errors: `client_scoring_disabled` (403, board is server-only), `score_not_supported` (400, progression-ranked board), `not_found` (404), `validation_failed` (400). Returns `LeaderboardScoreResult`:
 - `String leaderboardId`
@@ -62,12 +79,16 @@ Includes Server-Sent Events live streaming. Wire endpoints:
 
 - `GET /sdk/v1/event-leaderboards/:id`
 - `GET /sdk/v1/event-leaderboards/:id/stream`
+- `POST /sdk/v1/players/:externalId/event-leaderboards/:id/join`
 
 ```dart
 Future<EventLeaderboard>       read(String leaderboardId, {EventLeaderboardReadOptions? options})
+Future<EventLeaderboard>       join(String leaderboardId, {int? limit, String? as})
 Future<LeaderboardStream>      live(String leaderboardId)
 LiveLeaderboardSubscription   subscribe(String leaderboardId, {Duration pollInterval = const Duration(seconds: 15)})
 ```
+
+`join` — enrols the active player in the current event window at score 0 without starting a scoring attempt; returns the board with `joined: true`. Idempotent. Throws `KratyApiError` with code `conflict` (409) once the window has finalized.
 
 `EventLeaderboardReadOptions`:
 - `int? limit`

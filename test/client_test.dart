@@ -597,5 +597,159 @@ void main() {
       expect(fake.calls[0].url, contains('/sdk/v1/leaderboards/weekly_global/periods?limit=5'));
       c.close();
     });
+
+    test('leaderboards.join posts to the player-scoped join route + parses joined', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'key': 'weekly_global',
+            'sharedLeaderboardId': 'slb_1',
+            'scope': 'game',
+            'resetCadence': 'weekly',
+            'scoreAggregation': 'best',
+            'segment': 'eu',
+            'period': '2026-06-22T00:00:00Z',
+            'entries': <Object>[],
+            'self': {'rank': 12, 'score': 0},
+            'joined': true,
+          }
+        });
+      final c = KratyClient(_baseOpts(fake));
+      final lb = LeaderboardsClient(c);
+      final board = await lb.join('weekly_global', segment: 'eu', limit: 20, as: 'alice');
+      expect(board.joined, isTrue);
+      expect(board.segment, 'eu');
+      expect(board.self?.rank, 12);
+      expect(fake.calls[0].method, 'POST');
+      expect(fake.calls[0].url,
+          '$_baseUrl/sdk/v1/players/alice/leaderboards/weekly_global/join?limit=20');
+      final body = jsonDecode(fake.calls[0].body!) as Map<String, Object?>;
+      expect(body['segment'], 'eu');
+      c.close();
+    });
+
+    test('leaderboards.standings builds scope/period/limit/maxSegments query + parses segments', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'key': 'league',
+            'sharedLeaderboardId': 'slb_9',
+            'scope': 'game',
+            'resetCadence': 'weekly',
+            'scoreAggregation': 'best',
+            'period': '2026-06-22T00:00:00Z',
+            'segmentsTruncated': true,
+            'segments': [
+              {
+                'segment': 'gold',
+                'participated': true,
+                'selfRank': 3,
+                'entries': [
+                  {'participantId': 'p1', 'kind': 'player', 'name': 'alice', 'avatarUrl': null, 'score': 90, 'rank': 1, 'isSelf': false},
+                ],
+              },
+              {
+                'segment': 'silver',
+                'participated': false,
+                'selfRank': null,
+                'entries': <Object>[],
+              },
+            ],
+          }
+        });
+      final c = KratyClient(_baseOpts(fake));
+      final lb = LeaderboardsClient(c);
+      final standings = await lb.standings(
+        'league',
+        options: const StandingsReadOptions(
+          scope: 'all',
+          period: '2026-06-22T00:00:00Z',
+          limit: 25,
+          maxSegments: 5,
+        ),
+      );
+      expect(standings.key, 'league');
+      expect(standings.segmentsTruncated, isTrue);
+      expect(standings.segments, hasLength(2));
+      expect(standings.segments.first.segment, 'gold');
+      expect(standings.segments.first.participated, isTrue);
+      expect(standings.segments.first.selfRank, 3);
+      expect(standings.segments.first.entries, hasLength(1));
+      expect(standings.segments[1].selfRank, isNull);
+      final url = fake.calls[0].url;
+      expect(url, contains('/sdk/v1/leaderboards/league/standings?'));
+      expect(url, contains('scope=all'));
+      expect(url, contains('period=2026-06-22T00%3A00%3A00Z'));
+      expect(url, contains('limit=25'));
+      expect(url, contains('maxSegments=5'));
+      c.close();
+    });
+
+    test('leaderboards.standings passes explicit externalId for self_segment', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'key': 'league',
+            'sharedLeaderboardId': 'slb_9',
+            'scope': 'game',
+            'resetCadence': 'weekly',
+            'scoreAggregation': 'best',
+            'period': '2026-06-22T00:00:00Z',
+            'segmentsTruncated': false,
+            'segments': <Object>[],
+          }
+        });
+      final c = KratyClient(_baseOpts(fake));
+      final lb = LeaderboardsClient(c);
+      await lb.standings(
+        'league',
+        options: const StandingsReadOptions(scope: 'self_segment', externalId: 'alice'),
+      );
+      final url = fake.calls[0].url;
+      expect(url, contains('scope=self_segment'));
+      expect(url, contains('externalId=alice'));
+      c.close();
+    });
+
+    test('eventLeaderboards.join posts empty body + parses joined', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'leaderboardId': 'lb_1',
+            'mode': 'global',
+            'finalized': false,
+            'entries': <Object>[],
+            'self': {'rank': 5, 'score': 0},
+            'joined': true,
+          }
+        });
+      final c = KratyClient(_baseOpts(fake));
+      final lb = EventLeaderboardsClient(c);
+      final board = await lb.join('lb_1', limit: 10, as: 'alice');
+      expect(board.joined, isTrue);
+      expect(board.self?.rank, 5);
+      expect(fake.calls[0].method, 'POST');
+      expect(fake.calls[0].url,
+          '$_baseUrl/sdk/v1/players/alice/event-leaderboards/lb_1/join?limit=10');
+      c.close();
+    });
+
+    test('eventLeaderboards.join surfaces 409 conflict on a finalized window', () async {
+      final fake = FakeClient()
+        ..push(409, body: {
+          'error': {'code': 'conflict', 'message': 'window finalized'},
+        });
+      final c = KratyClient(_baseOpts(fake));
+      final lb = EventLeaderboardsClient(c);
+      Object? caught;
+      try {
+        await lb.join('lb_1', as: 'alice');
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught, isA<KratyApiError>());
+      expect((caught! as KratyApiError).code, 'conflict');
+      c.close();
+    });
   });
 }

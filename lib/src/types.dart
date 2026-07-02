@@ -546,12 +546,17 @@ class EventLeaderboard {
   final List<LeaderboardEntry> entries;
   final LeaderboardSelf? self;
 
+  /// `true` on the response to `join(...)`; `null` on plain reads
+  /// (the server omits the field outside a join).
+  final bool? joined;
+
   const EventLeaderboard({
     required this.leaderboardId,
     required this.mode,
     required this.finalized,
     required this.entries,
     required this.self,
+    this.joined,
   });
 
   factory EventLeaderboard.fromJson(JsonMap json) => EventLeaderboard(
@@ -564,6 +569,7 @@ class EventLeaderboard {
         self: json['self'] is Map
             ? LeaderboardSelf.fromJson(json['self']! as JsonMap)
             : null,
+        joined: json['joined'] is bool ? json['joined']! as bool : null,
       );
 }
 
@@ -591,6 +597,10 @@ class Leaderboard {
   final List<LeaderboardEntry> entries;
   final LeaderboardSelf? self;
 
+  /// `true` on the response to `join(...)`; `null` on plain reads
+  /// (the server omits the field outside a join).
+  final bool? joined;
+
   const Leaderboard({
     required this.key,
     required this.sharedLeaderboardId,
@@ -601,6 +611,7 @@ class Leaderboard {
     required this.period,
     required this.entries,
     required this.self,
+    this.joined,
   });
 
   factory Leaderboard.fromJson(JsonMap json) => Leaderboard(
@@ -617,6 +628,80 @@ class Leaderboard {
         self: json['self'] is Map
             ? LeaderboardSelf.fromJson(json['self']! as JsonMap)
             : null,
+        joined: json['joined'] is bool ? json['joined']! as bool : null,
+      );
+}
+
+/// One segment block in a [BoardStandings] response.
+class StandingsSegment {
+  /// Bucket value; `null` on unsegmented boards.
+  final String? segment;
+
+  /// `true` when the caller appears in this segment for the period.
+  final bool participated;
+
+  /// The caller's rank within this segment, or `null` if not present.
+  final int? selfRank;
+
+  final List<LeaderboardEntry> entries;
+
+  const StandingsSegment({
+    required this.segment,
+    required this.participated,
+    required this.selfRank,
+    required this.entries,
+  });
+
+  factory StandingsSegment.fromJson(JsonMap json) => StandingsSegment(
+        segment: _readNullableString(json, 'segment'),
+        participated: _readBool(json, 'participated'),
+        selfRank: _readNullableInt(json, 'selfRank'),
+        entries: (json['entries'] as List? ?? const [])
+            .map((e) => LeaderboardEntry.fromJson(e as JsonMap))
+            .toList(),
+      );
+}
+
+/// Flexible multi-segment standings — the versatile counterpart to
+/// [Leaderboard]. Returns one [StandingsSegment] block per segment
+/// selected by the request's `scope`, live or for a past period.
+class BoardStandings {
+  final String key;
+  final String sharedLeaderboardId;
+  final String scope;
+  final String resetCadence;
+  final String scoreAggregation;
+
+  /// ISO timestamp of the period these standings are from.
+  final String period;
+
+  final List<StandingsSegment> segments;
+
+  /// `true` when more segments existed than `maxSegments` returned.
+  final bool segmentsTruncated;
+
+  const BoardStandings({
+    required this.key,
+    required this.sharedLeaderboardId,
+    required this.scope,
+    required this.resetCadence,
+    required this.scoreAggregation,
+    required this.period,
+    required this.segments,
+    required this.segmentsTruncated,
+  });
+
+  factory BoardStandings.fromJson(JsonMap json) => BoardStandings(
+        key: _readString(json, 'key'),
+        sharedLeaderboardId: _readString(json, 'sharedLeaderboardId'),
+        scope: _readString(json, 'scope'),
+        resetCadence: _readString(json, 'resetCadence'),
+        scoreAggregation: _readString(json, 'scoreAggregation'),
+        period: _readString(json, 'period'),
+        segments: (json['segments'] as List? ?? const [])
+            .map((e) => StandingsSegment.fromJson(e as JsonMap))
+            .toList(),
+        segmentsTruncated: _readBool(json, 'segmentsTruncated'),
       );
 }
 
@@ -1076,6 +1161,43 @@ class LeaderboardReadOptions {
     this.period,
     this.includeSelf = false,
     this.externalId,
+  });
+}
+
+/// Per-call options for `LeaderboardsClient.standings`.
+class StandingsReadOptions {
+  /// Which segments to return (default `"all"`):
+  ///   - `"self_segment"` — the caller's single home segment.
+  ///   - `"mine"`         — every segment the caller appears in.
+  ///   - `"segment"`      — the one named in [segment].
+  ///   - `"all"`          — every segment for the period.
+  /// `self_segment`/`mine` resolve the caller from [externalId] (or
+  /// the SDK's active identity).
+  final String? scope;
+
+  /// Required only when [scope] is `"segment"` on a segmented board.
+  final String? segment;
+
+  /// `"current"` (default) reads the live ranks. An ISO timestamp from
+  /// `listPeriods(...)` reads the historical snapshot.
+  final String? period;
+
+  /// Flags `isSelf`/`selfRank`; auto-resolved for `self_segment`/`mine`.
+  final String? externalId;
+
+  /// Per-segment top-N (1–200, default 50 server-side).
+  final int? limit;
+
+  /// Cap on returned segment blocks (1–100, default 20 server-side).
+  final int? maxSegments;
+
+  const StandingsReadOptions({
+    this.scope,
+    this.segment,
+    this.period,
+    this.externalId,
+    this.limit,
+    this.maxSegments,
   });
 }
 
