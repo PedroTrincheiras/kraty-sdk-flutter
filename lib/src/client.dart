@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 
 import 'errors.dart';
+import 'finalization.dart';
 import 'secret_store.dart';
+import 'types.dart' show EventLeaderboard;
 
 /// SDK name + version, sent as `X-Kraty-SDK: <name>/<version>` on
 /// every request. Lets the backend tell which SDK + version sent a
@@ -104,6 +106,13 @@ class KratyClientOptions {
   /// or `flutter_secure_storage`-backed implementation here.
   final SecretStore? secretStore;
 
+  /// Persisted registry of the boards the player is in, powering the
+  /// finalization catch-up (see docs/05b + [KratyClient.onFinalized]). When
+  /// omitted, the SDK auto-selects a durable default the same way as
+  /// [secretStore]: `shared_preferences` inside Flutter, in-memory in
+  /// pure-Dart CLIs.
+  final MembershipStore? membershipStore;
+
   const KratyClientOptions({
     required this.apiKey,
     this.baseUrl = 'https://api.kraty.io',
@@ -115,6 +124,7 @@ class KratyClientOptions {
     this.playerSecret,
     this.activeExternalPlayerId,
     this.secretStore,
+    this.membershipStore,
   });
 }
 
@@ -149,6 +159,8 @@ class KratyClient {
   String? _playerSecret;
   String? _activeExternalPlayerId;
   final SecretStore _secretStore;
+  final MembershipStore _membershipStore;
+  late final FinalizationTracker _finalization;
   final String Function() _generateIdempotencyKey;
   final void Function(KratyRequestInfo)? _onRequest;
   final math.Random _jitterRng = math.Random();
@@ -172,9 +184,44 @@ class KratyClient {
             ? options.activeExternalPlayerId
             : null,
         _secretStore = options.secretStore ?? DefaultSecretStore(),
+        _membershipStore = options.membershipStore ?? DefaultMembershipStore(),
         _generateIdempotencyKey =
             options.generateIdempotencyKey ?? _defaultIdempotencyKey,
-        _onRequest = options.onRequest;
+        _onRequest = options.onRequest {
+    _finalization = FinalizationTracker(
+      store: _membershipStore,
+      // Never force-register during catch-up: only the current active player.
+      getActivePlayerId: () async => _activeExternalPlayerId,
+      readEventBoard: _readEventBoardStatus,
+    );
+  }
+
+  // Probe an event board's finalized status + reason + the caller's self
+  // entry for the finalization catch-up. Returns null (treated as
+  // still-active) when there's no active player or the read fails.
+  Future<EventBoardStatus?> _readEventBoardStatus(String leaderboardId) async {
+    final ext = _activeExternalPlayerId;
+    if (ext == null || ext.isEmpty) return null;
+    try {
+      final qs = 'includeSelf=true&externalId=${Uri.encodeComponent(ext)}&limit=1';
+      final env = await request(
+        method: 'GET',
+        path: '/sdk/v1/event-leaderboards/${Uri.encodeComponent(leaderboardId)}?$qs',
+      );
+      final data = env['data'];
+      if (data is! Map) return null;
+      final lb = EventLeaderboard.fromJson(data.cast<String, Object?>());
+      return EventBoardStatus(
+        finalized: lb.finalized,
+        reason: lb.finalizedReason,
+        self: lb.self != null
+            ? SelfEntry(rank: lb.self!.rank, score: lb.self!.score)
+            : null,
+      );
+    } catch (_) {
+      return null; // unreadable → treat as still-active
+    }
+  }
 
   static String _validateApiKey(String apiKey) {
     if (apiKey.isEmpty) {
@@ -307,6 +354,35 @@ class KratyClient {
     _activeExternalPlayerId = externalPlayerId;
     _playerSecret = secret;
   }
+
+  // ── Finalization catch-up (docs/05b) ─────────────────────────────
+  // onFinalized fires when a board the player is in ends — live over SSE
+  // while subscribed, OR via checkFinalizations() for boards that finalized
+  // while they were away. Both paths deliver exactly once.
+
+  /// Register a finalization handler. Returns an unsubscribe function.
+  void Function() onFinalized(FinalizationListener cb) =>
+      _finalization.onFinalized(cb);
+
+  /// Poll tracked boards; report + return any that finalized while away.
+  /// Call on app foreground / reconnect.
+  Future<List<FinalizationResult>> checkFinalizations() =>
+      _finalization.checkFinalizations();
+
+  /// Acknowledge a handled finalization — drop it from the registry.
+  Future<void> dismiss(MembershipRef ref) => _finalization.dismiss(ref);
+
+  /// Bulk-drop every already-reported membership. Returns the count.
+  Future<int> clearReported() => _finalization.clearReported();
+
+  /// Record the board the player just joined (called by [EventsClient.start]).
+  /// Fire-and-forget; never add latency or throw into start.
+  Future<void> trackMembership(MembershipRef ref) => _finalization.track(ref);
+
+  /// Route a live `finalized` SSE event through the same single writer as
+  /// catch-up so the registry is updated (not just the callback). See docs/05b.
+  Future<void> routeFinalized(String leaderboardId, Map<String, Object?>? data) =>
+      _finalization.onStreamFinalized(leaderboardId, data);
 
   /// Low-level: fire a JSON request. Resource clients call this;
   /// consumers usually go through the per-resource wrappers

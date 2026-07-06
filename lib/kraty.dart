@@ -82,6 +82,7 @@ export 'src/types.dart' show
     StandingsSegment;
 
 import 'src/client.dart';
+import 'src/finalization.dart';
 import 'src/resources.dart';
 
 export 'src/secret_store.dart' show
@@ -89,6 +90,23 @@ export 'src/secret_store.dart' show
     InMemorySecretStore,
     SecretStore,
     SharedPreferencesSecretStore;
+export 'src/finalization.dart' show
+    DefaultMembershipStore,
+    EventBoardStatus,
+    FinalStanding,
+    FinalizationListener,
+    FinalizationReason,
+    FinalizationResult,
+    FinalizationTracker,
+    InMemoryMembershipStore,
+    MembershipKind,
+    MembershipRef,
+    MembershipStatus,
+    MembershipStore,
+    SelfEntry,
+    SharedPreferencesMembershipStore,
+    StandingKind,
+    TrackedMembership;
 
 /// Convenience facade — instantiate one [Kraty] instead of wiring
 /// [KratyClient] + each resource client by hand. All resource clients
@@ -171,6 +189,25 @@ class Kraty {
     required String secret,
   }) =>
       client.signIn(externalPlayerId: externalPlayerId, secret: secret);
+
+  /// Finalization catch-up (docs/05b). [onFinalized] fires when a board the
+  /// player is in ends — live over SSE while subscribed, OR via
+  /// [checkFinalizations] for boards that finalized while they were away
+  /// (call it on app foreground / reconnect). Both paths deliver exactly
+  /// once. [dismiss] / [clearReported] acknowledge handled results so they
+  /// leave storage. Returns an unsubscribe function.
+  void Function() onFinalized(FinalizationListener cb) =>
+      client.onFinalized(cb);
+
+  /// Poll tracked boards; report + return any that finalized while away.
+  Future<List<FinalizationResult>> checkFinalizations() =>
+      client.checkFinalizations();
+
+  /// Acknowledge a handled finalization — drop it from the registry.
+  Future<void> dismiss(MembershipRef ref) => client.dismiss(ref);
+
+  /// Bulk-drop every already-reported membership. Returns the count.
+  Future<int> clearReported() => client.clearReported();
 
   /// Releases the underlying HTTP client.
   void close() => client.close();

@@ -17,7 +17,16 @@ Future<(String externalPlayerId, String secret)> ensureIdentity()
 Future<void> signIn(String externalPlayerId, String secret)
 Future<void> logout()
 Future<void> close()  // dispose resources
+
+// Finalization catch-up (docs/05b). Fires exactly once per board across the
+// live SSE `finalized` event AND boards that ended while the player was away.
+void Function() onFinalized(FinalizationListener cb)      // returns unsubscribe
+Future<List<FinalizationResult>> checkFinalizations()     // call on app foreground/reconnect
+Future<void> dismiss(MembershipRef ref)                   // ack one handled result
+Future<int> clearReported()                               // bulk-drop delivered entries
 ```
+
+`FinalizationResult` = `{ MembershipRef ref; String reason; SelfEntry? self; List<FinalStanding>? standings; String? eventKey }`; `reason` uses the `FinalizationReason` consts (`sessionTerminated` \| `windowClosed` \| `periodRolled` \| `finalized`). Registry persistence is injectable via `KratyClientOptions.membershipStore` (`SharedPreferencesMembershipStore` in Flutter, `InMemoryMembershipStore` in pure-Dart).
 
 ## `kraty.events` — `EventsClient`
 
@@ -94,6 +103,8 @@ LiveLeaderboardSubscription   subscribe(String leaderboardId, {Duration pollInte
 - `int? limit`
 - `bool includeSelf`
 - `String? externalId`
+
+`EventLeaderboard` read response includes `bool finalized` and, when finalized, `String? finalizedReason` (`session_terminated` \| `window_closed`) — powers the finalization catch-up's session-vs-window distinction.
 
 `LiveLeaderboardSubscription`:
 - `Stream<LeaderboardStreamEvent> events` — broadcast stream, deduped by `(participantId, score)`

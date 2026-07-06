@@ -9,6 +9,12 @@ import 'errors.dart';
 /// [kind] is the SSE `event:` line — typically:
 ///   - `ready` — handshake, sent once after the subscription is wired
 ///   - `score_update` — a participant's score / rank changed
+///   - `finalized` — the board ended (a session/lobby terminated, or the
+///     event window closed). [data] carries `reason`
+///     (`session_terminated` | `window_closed`) and `standings`
+///     (a list of `{participantId, rank, score, name, kind}`) — find the
+///     caller by `participantId` to show their placement, then stop
+///     expecting `score_update`s.
 ///   - `closed` — server is finalizing or closing the stream
 ///
 /// [data] is the parsed `data:` JSON line (or null if it didn't parse).

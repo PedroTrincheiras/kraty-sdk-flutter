@@ -543,6 +543,12 @@ class EventLeaderboard {
   final String leaderboardId;
   final String mode;
   final bool finalized;
+
+  /// Why the board finalized — `session_terminated` (your lobby ended
+  /// early) vs `window_closed` (the whole event ended), or `null` while
+  /// the board is still live. One of the `FinalizationReason` constants.
+  final String? finalizedReason;
+
   final List<LeaderboardEntry> entries;
   final LeaderboardSelf? self;
 
@@ -554,6 +560,7 @@ class EventLeaderboard {
     required this.leaderboardId,
     required this.mode,
     required this.finalized,
+    this.finalizedReason,
     required this.entries,
     required this.self,
     this.joined,
@@ -563,6 +570,7 @@ class EventLeaderboard {
         leaderboardId: _readString(json, 'leaderboardId'),
         mode: _readString(json, 'mode'),
         finalized: _readBool(json, 'finalized'),
+        finalizedReason: _readNullableString(json, 'finalizedReason'),
         entries: (json['entries'] as List? ?? const [])
             .map((e) => LeaderboardEntry.fromJson(e as JsonMap))
             .toList(),

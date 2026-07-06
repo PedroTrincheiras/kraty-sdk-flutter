@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'client.dart';
+import 'finalization.dart';
 import 'leaderboard_stream.dart';
 import 'types.dart';
 
@@ -71,7 +72,7 @@ class EventsClient {
         if (playerContext != null) 'playerContext': playerContext,
       },
     );
-    return _data<StartAttemptResponse>(env, (raw) {
+    final res = _data<StartAttemptResponse>(env, (raw) {
       if (raw is Map) return StartAttemptResponse.fromJson(raw.cast<String, Object?>());
       return StartAttemptResponse(
         attempt: Attempt.fromJson(const <String, Object?>{}),
@@ -79,6 +80,14 @@ class EventsClient {
         windowEndsAt: '',
       );
     });
+    // Track the session/event board for finalization catch-up (docs/05b) —
+    // fire-and-forget so it never adds latency to start.
+    if (res.leaderboardId.isNotEmpty) {
+      unawaited(_client
+          .trackMembership(MembershipRef.eventBoard(res.leaderboardId, eventKey: eventKey))
+          .catchError((_) {}));
+    }
+    return res;
   }
 
   /// `POST /sdk/v1/players/:p/events/:e/attempts/:a/progress` —
@@ -423,6 +432,12 @@ class EventLeaderboardsClient {
 
     void surface(LeaderboardStreamEvent ev) {
       if (closed) return;
+      // A live `finalized` event also updates the membership registry (not
+      // just the callback) through the same single writer as catch-up —
+      // see docs/05b. Fire-and-forget; the user still gets `ev` below.
+      if (ev.kind == 'finalized') {
+        unawaited(_client.routeFinalized(leaderboardId, ev.data).catchError((_) {}));
+      }
       // Dedup score_update by (participantId, score). Other kinds
       // (ready, closed, parse-error) always pass through.
       if (ev.kind == 'score_update') {
