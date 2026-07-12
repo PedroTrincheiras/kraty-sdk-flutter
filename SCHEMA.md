@@ -1,4 +1,4 @@
-# Kraty Flutter SDK — public surface (v0.6.0)
+# Kraty Flutter SDK: public surface (v0.6.0)
 
 Canonical method + type listing for `kraty` (Dart package). Update this
 file in the same commit as any signature change.
@@ -28,7 +28,7 @@ Future<int> clearReported()                               // bulk-drop delivered
 
 `FinalizationResult` = `{ MembershipRef ref; String reason; SelfEntry? self; List<FinalStanding>? standings; String? eventKey }`; `reason` uses the `FinalizationReason` consts (`sessionTerminated` \| `windowClosed` \| `periodRolled` \| `finalized`). Registry persistence is injectable via `KratyClientOptions.membershipStore` (`SharedPreferencesMembershipStore` in Flutter, `InMemoryMembershipStore` in pure-Dart).
 
-## `kraty.events` — `EventsClient`
+## `kraty.events`: `EventsClient`
 
 ```dart
 Future<List<EventListing>> listForPlayer({String? as})
@@ -36,7 +36,7 @@ Future<StartAttemptResponse> start(String eventKey, {Map<String, Object?>? playe
 Future<ProgressResponse> progress(String eventKey, String attemptId, ProgressInput input, {String? as})
 ```
 
-## `kraty.leaderboards` — `LeaderboardsClient`
+## `kraty.leaderboards`: `LeaderboardsClient`
 
 The dashboard-configured cross-event boards. Addressed by stable
 game-scoped **key**. Wire endpoints:
@@ -56,31 +56,31 @@ Future<LeaderboardPeriods>     listPeriods(String key, {int? limit})
 ```
 
 `LeaderboardReadOptions`:
-- `int? limit` — 1–200, default 50 server-side
-- `String? segment` — bucket value; required only for `context` segmentation. Omit for `progression`-segmented boards (server derives the caller's division); unsegmented boards ignore it
-- `String? period` — `"current"` (default) or an ISO timestamp from `LeaderboardPeriod.periodStartedAt`
-- `bool includeSelf` — when true, response includes `self: { rank, score }` (live periods only)
-- `String? externalId` — required when `includeSelf` is true; lazily resolved otherwise
+- `int? limit`: 1–200, default 50 server-side
+- `String? segment`: bucket value; required only for `context` segmentation. Omit for `progression`-segmented boards (server derives the caller's division); unsegmented boards ignore it
+- `String? period`: `"current"` (default) or an ISO timestamp from `LeaderboardPeriod.periodStartedAt`
+- `bool includeSelf`: when true, response includes `self: { rank, score }` (live periods only)
+- `String? externalId`: required when `includeSelf` is true; lazily resolved otherwise
 
-`join` — enrols the active player at score 0 without submitting a score; returns the current standings with `joined: true`. Idempotent (never resets an existing score). Pass `segment` for `context` boards; omit for `progression` boards (server derives the division from the caller's balance).
+`join` enrols the active player at score 0 without submitting a score; returns the current standings with `joined: true`. Idempotent (never resets an existing score). Pass `segment` for `context` boards; omit for `progression` boards (server derives the division from the caller's balance).
 
-`standings` — multi-segment read. Returns one `StandingsSegment` block per segment selected by `scope`. `StandingsReadOptions`:
-- `String? scope` — `'self_segment'`, `'mine'`, `'segment'`, `'all'` (default `'all'`)
-- `String? segment` — required when `scope == 'segment'` on a segmented board
-- `String? period` — `'current'` (default) or an ISO timestamp from `listPeriods`
-- `String? externalId` — auto-resolved for `self_segment` / `mine`
-- `int? limit` — per-segment top-N (1..200, default 50)
-- `int? maxSegments` — cap on returned segment blocks (1..100, default 20)
+`standings` is a multi-segment read. Returns one `StandingsSegment` block per segment selected by `scope`. `StandingsReadOptions`:
+- `String? scope`: `'self_segment'`, `'mine'`, `'segment'`, `'all'` (default `'all'`)
+- `String? segment`: required when `scope == 'segment'` on a segmented board
+- `String? period`: `'current'` (default) or an ISO timestamp from `listPeriods`
+- `String? externalId`: auto-resolved for `self_segment` / `mine`
+- `int? limit`: per-segment top-N (1..200, default 50)
+- `int? maxSegments`: cap on returned segment blocks (1..100, default 20)
 
-`BoardStandings`: `key`, `sharedLeaderboardId`, `scope`, `resetCadence`, `scoreAggregation`, `period`, `List<StandingsSegment> segments`, `bool segmentsTruncated`.
+`BoardStandings`: `key`, `leaderboardId`, `scope`, `resetCadence`, `scoreAggregation`, `period`, `List<StandingsSegment> segments`, `bool segmentsTruncated`.
 `StandingsSegment`: `String? segment`, `bool participated`, `int? selfRank`, `List<LeaderboardEntry> entries`.
 
-`submitScore` — submit a score for the active player directly to the board, outside an event attempt. `segment` is required only for `context` segmentation; omit for `progression` boards (server derives the division); unsegmented boards ignore it. Errors: `client_scoring_disabled` (403, board is server-only), `score_not_supported` (400, progression-ranked board), `not_found` (404), `validation_failed` (400). Returns `LeaderboardScoreResult`:
+`submitScore` submits a score for the active player directly to the board, outside an event attempt. `segment` is required only for `context` segmentation; omit for `progression` boards (server derives the division); unsegmented boards ignore it. Errors: `client_scoring_disabled` (403, board is server-only), `score_not_supported` (400, progression-ranked board), `not_found` (404), `validation_failed` (400). Returns `LeaderboardScoreResult`:
 - `String leaderboardId`
 - `num score`
 - `int? rank`
 
-## `kraty.eventLeaderboards` — `EventLeaderboardsClient`
+## `kraty.eventLeaderboards`: `EventLeaderboardsClient`
 
 The auto-generated per-event-window leaderboard. Addressed by the
 **UUID** returned in `events.start(...)`'s `attempt.leaderboardId`.
@@ -97,23 +97,23 @@ Future<LeaderboardStream>      live(String leaderboardId)
 LiveLeaderboardSubscription   subscribe(String leaderboardId, {Duration pollInterval = const Duration(seconds: 15)})
 ```
 
-`join` — enrols the active player in the current event window at score 0 without starting a scoring attempt; returns the board with `joined: true`. Idempotent. Throws `KratyApiError` with code `conflict` (409) once the window has finalized.
+`join` enrols the active player in the current event window at score 0 without starting a scoring attempt; returns the board with `joined: true`. Idempotent. Throws `KratyApiError` with code `conflict` (409) once the window has finalized.
 
 `EventLeaderboardReadOptions`:
 - `int? limit`
 - `bool includeSelf`
 - `String? externalId`
 
-`EventLeaderboard` read response includes `bool finalized` and, when finalized, `String? finalizedReason` (`session_terminated` \| `window_closed`) — powers the finalization catch-up's session-vs-window distinction.
+`EventLeaderboard` read response includes `bool finalized` and, when finalized, `String? finalizedReason` (`session_terminated` \| `window_closed`), which powers the finalization catch-up's session-vs-window distinction.
 
 `LiveLeaderboardSubscription`:
-- `Stream<LeaderboardStreamEvent> events` — broadcast stream, deduped by `(participantId, score)`
-- `Stream<Object> errors` — transport / poll failures (non-fatal)
-- `Future<void> cancel()` — idempotent
+- `Stream<LeaderboardStreamEvent> events`: broadcast stream, deduped by `(participantId, score)`
+- `Stream<Object> errors`: transport / poll failures (non-fatal)
+- `Future<void> cancel()`: idempotent
 
 Set `pollInterval: Duration.zero` to disable polling (SSE-only).
 
-## `kraty.grants` — `GrantsClient`
+## `kraty.grants`: `GrantsClient`
 
 ```dart
 Future<List<Grant>>      listPending({int? limit, String? as})
@@ -128,33 +128,33 @@ Future<CollectAllResult> collectAll({String? as})
 - `List<CollectAllFailure> failures`
 - `bool get hasFailures`
 
-## `kraty.lobbies` — `LobbiesClient`
+## `kraty.lobbies`: `LobbiesClient`
 
 ```dart
 Future<Lobby> read(String lobbyId)
 ```
 
-## `kraty.inventory` — `InventoryClient`
+## `kraty.inventory`: `InventoryClient`
 
 ```dart
 Future<List<PlayerItemHolding>> list({String? as})
 Future<ConsumeItemResult>       consume(String itemKey, ConsumeItemInput input, {String? as})
 ```
 
-## `kraty.wallet` — `WalletClient`
+## `kraty.wallet`: `WalletClient`
 
 ```dart
 Future<List<PlayerWalletHolding>> list({String? as})
 Future<DebitWalletResult>         debit(String economyKey, DebitWalletInput input, {String? as})
 ```
 
-## `kraty.players` — `PlayersClient`
+## `kraty.players`: `PlayersClient`
 
 ```dart
 Future<PlayerRegistration> register(String externalPlayerId, {bool force = false})
 ```
 
-## `kraty.catalog` — `CatalogClient`
+## `kraty.catalog`: `CatalogClient`
 
 ```dart
 Future<Catalog> get()
@@ -191,7 +191,7 @@ class SharedPreferencesSecretStore implements SecretStore  // wraps shared_prefe
 ## Errors
 
 ```dart
-class KratyApiError extends Error      // non-2xx — has code, status, message
+class KratyApiError extends Error      // non-2xx: has code, status, message
 class KratyNetworkError extends Error  // transport / parse failure
 ```
 

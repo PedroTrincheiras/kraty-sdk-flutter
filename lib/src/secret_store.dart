@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// The SDK auto-selects a backend based on the runtime:
 /// [SharedPreferencesSecretStore] when the Flutter binding is alive,
 /// [InMemorySecretStore] otherwise. Game code never has to construct
-/// or pass one — `Kraty(KratyClientOptions(apiKey: '...'))` is enough.
+/// or pass one; `Kraty(KratyClientOptions(apiKey: '...'))` is enough.
 abstract class SecretStore {
   /// Returns the stored secret for [externalPlayerId], or null if
   /// none is stored.
@@ -86,7 +86,7 @@ class InMemorySecretStore implements SecretStore {
 }
 
 /// Durable [SecretStore] backed by `shared_preferences`. Picked
-/// automatically when the SDK detects a live Flutter binding — game
+/// automatically when the SDK detects a live Flutter binding; game
 /// code doesn't construct it directly.
 ///
 /// Key namespace mirrors the TypeScript SDK so a hybrid Flutter/web

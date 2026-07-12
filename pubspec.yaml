@@ -1,16 +1,16 @@
 name: kraty
 description: |
   Dart/Flutter SDK for the Kraty game-events platform. Wraps the
-  public /sdk/v1 surface — events, leaderboards, grants, crates,
+  public /sdk/v1 surface: events, leaderboards, grants, crates,
   lobbies, inventory, wallet, per-player auth.
 
   SECURITY: this SDK is for game CLIENTS. It deliberately does NOT
   expose the /server/v1 (server_integration) or /admin/v1 surfaces,
   which can mint currency / grant items / rotate player secrets.
   Embedding a server_integration key in a shipped game client is a
-  security incident — use the @kraty/server-sdk (Node) from your
+  security incident. Use the @kraty/server-sdk (Node) from your
   own backend instead.
-version: 0.8.0
+version: 0.10.0
 repository: https://github.com/kraty-team/kraty
 issue_tracker: https://github.com/kraty-team/kraty/issues
 

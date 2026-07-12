@@ -4,26 +4,26 @@ import 'dart:convert';
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Client finalization catch-up — see docs/05b. Ported from the TS SDK
+/// Client finalization catch-up (see docs/05b). Ported from the TS SDK
 /// reference (packages/client/sdk-typescript/src/finalization.ts).
 ///
 /// CORE INVARIANT: a finalization is recorded through EXACTLY ONE writer,
 /// [FinalizationTracker._resolveFinalized]. Both the live SSE `finalized`
-/// event AND [FinalizationTracker.checkFinalizations] route through it — so
+/// event AND [FinalizationTracker.checkFinalizations] route through it, so
 /// the SSE path persists `status: finalized` + `reportedAt` to the registry,
 /// not just fires the callback. Whichever path arrives first wins; the other
 /// no-ops on `reportedAt`. That is what makes delivery exactly-once across
 /// live + catch-up.
 
 /// The kind of board a membership refers to. Reference these constants
-/// instead of hardcoding the wire strings — e.g. [MembershipKind.eventBoard],
-/// never `'event_board'`.
+/// instead of hardcoding the wire strings, e.g. [MembershipKind.eventLeaderboard],
+/// never `'event_leaderboard'`.
 abstract final class MembershipKind {
   /// A per-event (or per-session) board a player is placed on.
-  static const String eventBoard = 'event_board';
+  static const String eventLeaderboard = 'event_leaderboard';
 
-  /// A recurring shared leaderboard (catch-up deferred — see docs/05b).
-  static const String sharedBoard = 'shared_board';
+  /// A recurring leaderboard (catch-up deferred; see docs/05b).
+  static const String leaderboard = 'leaderboard';
 }
 
 /// Why a board finalized. The precise reasons come from the live SSE stream;
@@ -36,7 +36,7 @@ abstract final class FinalizationReason {
   /// The event window closed.
   static const String windowClosed = 'window_closed';
 
-  /// A recurring shared board rolled to a new period.
+  /// A recurring leaderboard rolled to a new period.
   static const String periodRolled = 'period_rolled';
 
   /// Ended, but the precise cause is unknown.
@@ -55,8 +55,8 @@ abstract final class MembershipStatus {
   static const String finalized = 'finalized';
 }
 
-/// A tracked board reference — either a per-event board (UUID) or a
-/// configurable/shared board (key + period).
+/// A tracked board reference: either a per-event board (UUID) or a
+/// configurable leaderboard (key + period).
 class MembershipRef {
   final String kind;
   final String? leaderboardId;
@@ -72,19 +72,19 @@ class MembershipRef {
     this.period,
   });
 
-  factory MembershipRef.eventBoard(String leaderboardId, {String? eventKey}) =>
+  factory MembershipRef.eventLeaderboard(String leaderboardId, {String? eventKey}) =>
       MembershipRef(
-        kind: MembershipKind.eventBoard,
+        kind: MembershipKind.eventLeaderboard,
         leaderboardId: leaderboardId,
         eventKey: eventKey,
       );
 
   bool sameAs(MembershipRef o) {
     if (kind != o.kind) return false;
-    if (kind == MembershipKind.eventBoard) {
+    if (kind == MembershipKind.eventLeaderboard) {
       return leaderboardId == o.leaderboardId;
     }
-    if (kind == MembershipKind.sharedBoard) {
+    if (kind == MembershipKind.leaderboard) {
       return key == o.key && period == o.period;
     }
     return false;
@@ -99,7 +99,7 @@ class MembershipRef {
       };
 
   factory MembershipRef.fromJson(Map<String, Object?> json) => MembershipRef(
-        kind: json['kind'] as String? ?? MembershipKind.eventBoard,
+        kind: json['kind'] as String? ?? MembershipKind.eventLeaderboard,
         leaderboardId: json['leaderboardId'] as String?,
         eventKey: json['eventKey'] as String?,
         key: json['key'] as String?,
@@ -112,7 +112,7 @@ class TrackedMembership {
   String status;
   final String joinedAt;
 
-  /// Set when [FinalizationTracker.onFinalized] has fired — the dedupe guard.
+  /// Set when [FinalizationTracker.onFinalized] has fired; the dedupe guard.
   String? reportedAt;
   final String? label;
 
@@ -196,11 +196,11 @@ class FinalizationResult {
 
 /// Board-status probe the tracker asks the client for. [reason] is one of the
 /// [FinalizationReason] constants, or null when the backend didn't supply one.
-class EventBoardStatus {
+class EventLeaderboardStatus {
   final bool finalized;
   final String? reason;
   final SelfEntry? self;
-  const EventBoardStatus({
+  const EventLeaderboardStatus({
     required this.finalized,
     this.reason,
     this.self,
@@ -262,7 +262,7 @@ class SharedPreferencesMembershipStore implements MembershipStore {
   }
 }
 
-/// Lazily-resolved default store — `shared_preferences` when the Flutter
+/// Lazily-resolved default store: `shared_preferences` when the Flutter
 /// binding is live, in-memory otherwise. Mirrors `DefaultSecretStore`.
 class DefaultMembershipStore implements MembershipStore {
   MembershipStore? _delegate;
@@ -304,12 +304,12 @@ typedef FinalizationListener = void Function(FinalizationResult result);
 
 /// Async board-status probe: returns null when the board can't be read (treat
 /// as still-active).
-typedef ReadEventBoard = Future<EventBoardStatus?> Function(String leaderboardId);
+typedef ReadEventLeaderboard = Future<EventLeaderboardStatus?> Function(String leaderboardId);
 
 class FinalizationTracker {
   final MembershipStore _store;
   final Future<String?> Function() _getActivePlayerId;
-  final ReadEventBoard _readEventBoard;
+  final ReadEventLeaderboard _readEventLeaderboard;
   final Duration _pruneAfter;
   final List<FinalizationListener> _listeners = [];
 
@@ -320,11 +320,11 @@ class FinalizationTracker {
   FinalizationTracker({
     required MembershipStore store,
     required Future<String?> Function() getActivePlayerId,
-    required ReadEventBoard readEventBoard,
+    required ReadEventLeaderboard readEventLeaderboard,
     Duration pruneAfter = const Duration(days: 7),
   })  : _store = store,
         _getActivePlayerId = getActivePlayerId,
-        _readEventBoard = readEventBoard,
+        _readEventLeaderboard = readEventLeaderboard,
         _pruneAfter = pruneAfter;
 
   /// Register a finalization handler. Returns an unsubscribe function.
@@ -385,7 +385,7 @@ class FinalizationTracker {
   }
 
   /// Live SSE path: a `finalized` stream event arrived. Routes through the
-  /// same writer as catch-up — persists to the registry AND fires. (This is
+  /// same writer as catch-up: persists to the registry AND fires. (This is
   /// the invariant in docs/05b.)
   Future<void> onStreamFinalized(
     String leaderboardId,
@@ -398,7 +398,7 @@ class FinalizationTracker {
             reasonRaw == FinalizationReason.windowClosed)
         ? reasonRaw as String
         : FinalizationReason.finalized;
-    final ref = MembershipRef.eventBoard(leaderboardId);
+    final ref = MembershipRef.eventLeaderboard(leaderboardId);
     final standingsRaw = data?['standings'];
     await _resolveFinalized(
       playerId,
@@ -429,12 +429,12 @@ class FinalizationTracker {
         entries.where((e) => e.status == MembershipStatus.active).toList();
     final out = <FinalizationResult>[];
     for (final e in active) {
-      // shared_board catch-up: see docs/05b (deferred)
-      if (e.ref.kind != MembershipKind.eventBoard ||
+      // leaderboard catch-up: see docs/05b (deferred)
+      if (e.ref.kind != MembershipKind.eventLeaderboard ||
           e.ref.leaderboardId == null) {
         continue;
       }
-      final read = await _readEventBoard(e.ref.leaderboardId!);
+      final read = await _readEventLeaderboard(e.ref.leaderboardId!);
       if (read == null || !read.finalized) continue;
       final result = FinalizationResult(
         ref: e.ref,
@@ -450,7 +450,7 @@ class FinalizationTracker {
     return out;
   }
 
-  /// Acknowledge a finalization once the app has shown it — removes that
+  /// Acknowledge a finalization once the app has shown it; removes that
   /// membership from the registry so it never surfaces again. No-op if the ref
   /// isn't tracked.
   Future<void> dismiss(MembershipRef ref) async {
@@ -463,7 +463,7 @@ class FinalizationTracker {
     });
   }
 
-  /// Bulk cleanup — drop every already-reported entry. Returns how many were
+  /// Bulk cleanup: drop every already-reported entry. Returns how many were
   /// removed.
   Future<int> clearReported() async {
     final playerId = await _getActivePlayerId();

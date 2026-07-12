@@ -12,11 +12,11 @@ import 'types.dart' show EventLeaderboard;
 
 /// SDK name + version, sent as `X-Kraty-SDK: <name>/<version>` on
 /// every request. Lets the backend tell which SDK + version sent a
-/// given request — useful for debugging stale-SDK deployments and
+/// given request, useful for debugging stale-SDK deployments and
 /// for graceful deprecation handling. Bump in lockstep with
 /// `pubspec.yaml` `version`.
 const String _sdkName = 'kraty-flutter';
-const String _sdkVersion = '0.0.1';
+const String _sdkVersion = '0.9.0';
 const String _sdkUserAgent = '$_sdkName/$_sdkVersion';
 
 /// Telemetry record fired after every HTTP attempt.
@@ -74,7 +74,7 @@ class KratyClientOptions {
 
   final KratyRetryConfig retry;
 
-  /// Optional HTTP client — tests inject `MockClient`; production can
+  /// Optional HTTP client: tests inject `MockClient`; production can
   /// layer a custom `BaseClient` for instrumentation. Defaults to a
   /// fresh `http.Client()`.
   final http.Client? httpClient;
@@ -82,7 +82,7 @@ class KratyClientOptions {
   /// Idempotency-key generator. Defaults to a 16-byte hex random.
   final String Function()? generateIdempotencyKey;
 
-  /// Fires after every HTTP attempt — useful for telemetry.
+  /// Fires after every HTTP attempt; useful for telemetry.
   final void Function(KratyRequestInfo info)? onRequest;
 
   /// Per-player secret. When set, the client attaches
@@ -94,7 +94,7 @@ class KratyClientOptions {
   /// The `externalPlayerId` this SDK instance is authenticated as.
   /// When set together with [playerSecret], player-scoped methods
   /// skip the lazy-register round-trip and use this id directly.
-  /// Leave unset for self-serve signups — the SDK auto-generates a
+  /// Leave unset for self-serve signups; the SDK auto-generates a
   /// `kp_<uuid>` id on first use and persists it in [secretStore].
   final String? activeExternalPlayerId;
 
@@ -153,7 +153,7 @@ class KratyClient {
   final http.Client _http;
   final bool _ownsHttp;
   final String _authHeader;
-  // Identity is mutable on purpose — `ensureIdentity()` may register
+  // Identity is mutable on purpose: `ensureIdentity()` may register
   // or restore a player after construction and writes back here so
   // subsequent calls skip the round-trip.
   String? _playerSecret;
@@ -164,7 +164,7 @@ class KratyClient {
   final String Function() _generateIdempotencyKey;
   final void Function(KratyRequestInfo)? _onRequest;
   final math.Random _jitterRng = math.Random();
-  // Concurrent first-touch dedupe — two simultaneous player-scoped
+  // Concurrent first-touch dedupe: two simultaneous player-scoped
   // calls share one register round-trip.
   Future<({String externalPlayerId, String secret})>? _identityInit;
 
@@ -192,14 +192,14 @@ class KratyClient {
       store: _membershipStore,
       // Never force-register during catch-up: only the current active player.
       getActivePlayerId: () async => _activeExternalPlayerId,
-      readEventBoard: _readEventBoardStatus,
+      readEventLeaderboard: _readEventLeaderboardStatus,
     );
   }
 
   // Probe an event board's finalized status + reason + the caller's self
   // entry for the finalization catch-up. Returns null (treated as
   // still-active) when there's no active player or the read fails.
-  Future<EventBoardStatus?> _readEventBoardStatus(String leaderboardId) async {
+  Future<EventLeaderboardStatus?> _readEventLeaderboardStatus(String leaderboardId) async {
     final ext = _activeExternalPlayerId;
     if (ext == null || ext.isEmpty) return null;
     try {
@@ -211,7 +211,7 @@ class KratyClient {
       final data = env['data'];
       if (data is! Map) return null;
       final lb = EventLeaderboard.fromJson(data.cast<String, Object?>());
-      return EventBoardStatus(
+      return EventLeaderboardStatus(
         finalized: lb.finalized,
         reason: lb.finalizedReason,
         self: lb.self != null
@@ -242,7 +242,7 @@ class KratyClient {
   /// Low-level accessors for the leaderboard SSE client, which needs
   /// a long-lived `http.send` rather than the bounded request/response
   /// shape `request()` provides. NOT intended for general consumer
-  /// use — prefer the per-resource clients.
+  /// use; prefer the per-resource clients.
   String get baseUrlForStreaming => _baseUrl;
   String get authHeaderForStreaming => _authHeader;
   String? get playerSecretForStreaming => _playerSecret;
@@ -264,14 +264,14 @@ class KratyClient {
 
   /// Resolve the active player, registering a fresh one if none
   /// exists. Called transparently by every player-scoped resource
-  /// method — game code rarely needs to invoke this directly.
+  /// method; game code rarely needs to invoke this directly.
   ///
   /// Resolution order:
   ///  1. Constructor `activeExternalPlayerId` + `playerSecret` if
-  ///     both were supplied — explicit, no I/O.
-  ///  2. SecretStore's persisted active id + matching secret — the
+  ///     both were supplied (explicit, no I/O).
+  ///  2. SecretStore's persisted active id + matching secret, the
   ///     "resume previous session" path.
-  ///  3. Fresh self-serve signup — generate a `kp_<uuid>` id, POST
+  ///  3. Fresh self-serve signup: generate a `kp_<uuid>` id, POST
   ///     /sdk/v1/players/:id/register, persist the secret, install
   ///     it on the client.
   ///
@@ -356,7 +356,7 @@ class KratyClient {
   }
 
   // ── Finalization catch-up (docs/05b) ─────────────────────────────
-  // onFinalized fires when a board the player is in ends — live over SSE
+  // onFinalized fires when a board the player is in ends: live over SSE
   // while subscribed, OR via checkFinalizations() for boards that finalized
   // while they were away. Both paths deliver exactly once.
 
@@ -369,7 +369,7 @@ class KratyClient {
   Future<List<FinalizationResult>> checkFinalizations() =>
       _finalization.checkFinalizations();
 
-  /// Acknowledge a handled finalization — drop it from the registry.
+  /// Acknowledge a handled finalization; drop it from the registry.
   Future<void> dismiss(MembershipRef ref) => _finalization.dismiss(ref);
 
   /// Bulk-drop every already-reported membership. Returns the count.
@@ -426,7 +426,7 @@ class KratyClient {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           final parsed = _parseJson(res);
           // The backend uses 202 + `{ error: { code, message } }` to
-          // signal "valid request, not ready yet" — currently only
+          // signal "valid request, not ready yet"; currently only
           // `lobby_forming`. Surface as a `KratyApiError` so
           // consumers `switch (err.code)` uniformly across statuses.
           final maybeErr = _tryReadErrorEnvelope(parsed);
@@ -474,7 +474,7 @@ class KratyClient {
           }
           throw wrapped;
         }
-        // Genuinely unexpected — rethrow with original stack.
+        // Genuinely unexpected; rethrow with original stack.
         Error.throwWithStackTrace(err, stack);
       }
     }
@@ -571,7 +571,7 @@ class KratyClient {
         return decoded.map((k, v) => MapEntry(k as String, v));
       }
       // Top-level array or scalar isn't expected from the SDK
-      // surface — wrap so the caller's `[key]` access doesn't NPE.
+      // surface, so wrap it so the caller's `[key]` access doesn't NPE.
       return <String, Object?>{'__nonObject': decoded};
     } on FormatException {
       throw KratyApiError(
@@ -602,7 +602,7 @@ class KratyClient {
       final decoded = res.body.isEmpty ? null : jsonDecode(res.body);
       if (decoded is Map<String, Object?>) parsed = decoded;
     } on FormatException {
-      // fall through — we synthesize below
+      // fall through; we synthesize below
     }
     final env = _tryReadErrorEnvelope(parsed);
     if (env != null) {
@@ -623,7 +623,7 @@ class KratyClient {
 }
 
 String _defaultIdempotencyKey() {
-  // 16 random bytes as hex — not RFC 4122 v4 but unique enough for
+  // 16 random bytes as hex: not RFC 4122 v4 but unique enough for
   // request dedup. (We'd use `Uuid().v4()` here but want zero
   // additional pub deps for a single helper.)
   final rng = math.Random.secure();
@@ -638,7 +638,7 @@ String _defaultIdempotencyKey() {
 /// signups. Prefixed so a glance at the audit log distinguishes
 /// SDK-minted ids from your own (which typically come from your auth
 /// backend). Collision resistance is fine for the lifetime of a
-/// device — security rests on the per-player secret, not on the id
+/// device; security rests on the per-player secret, not on the id
 /// being unguessable.
 String _generateExternalPlayerId() {
   final rng = math.Random.secure();

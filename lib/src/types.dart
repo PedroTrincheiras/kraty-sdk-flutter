@@ -1,7 +1,7 @@
 /// Public response types for the `/sdk/v1` surface, mirroring the
 /// OpenAPI spec at `apps/backend/openapi.json` and the hand-authored
 /// TypeScript types in `@kraty/sdk`. Dart classes with `fromJson`
-/// factories — manual rather than generated so contributors can read
+/// factories, manual rather than generated so contributors can read
 /// the file standalone and so the SDK doesn't carry a code-gen
 /// dependency.
 library;
@@ -122,7 +122,7 @@ class StartAttemptResponse {
       );
 }
 
-/// One slot in an event's `entryCost.currencies` list — paid from
+/// One slot in an event's `entryCost.currencies` list, paid from
 /// the player's wallet on attempt start. Lifted from the server-
 /// side `EntryCost` shape verbatim.
 class EntryCostCurrency {
@@ -135,7 +135,7 @@ class EntryCostCurrency {
       );
 }
 
-/// One slot in an event's `entryCost.items` list — consumed from
+/// One slot in an event's `entryCost.items` list, consumed from
 /// inventory on attempt start.
 class EntryCostItem {
   final String key;
@@ -148,7 +148,7 @@ class EntryCostItem {
 }
 
 /// Transactional cost paid on `events.start`. Server atomically
-/// debits + creates the attempt in a single tx — partial debits
+/// debits + creates the attempt in a single tx, so partial debits
 /// never persist. Missing entry triggers a `KratyApiError` with
 /// code `insufficient_entry_cost`.
 class EntryCost {
@@ -225,7 +225,7 @@ class RewardBundlePreview {
       );
 }
 
-/// One milestone reward — fires when the player crosses [threshold]
+/// One milestone reward that fires when the player crosses [threshold]
 /// on [metricKey] during a single attempt. Use this to render
 /// "next milestone: 5 rabbits → 200 cash + 5 bullets" in your UI.
 class MilestoneRewardPreview {
@@ -272,10 +272,10 @@ class RewardPolicyTier {
 /// Reward policy summary with inline bundle previews. Mirrors the
 /// four sealed policy types the backend supports:
 ///
-///  - `none` — event has no rewards (training / practice modes).
-///  - `fixed_bundle` — everyone who completes gets [bundle].
-///  - `rank_scaled` — bundle picked by leaderboard rank; see [tiers].
-///  - `shared_pool` — currency pool split among winners; see [pool]
+///  - `none`: event has no rewards (training / practice modes).
+///  - `fixed_bundle`: everyone who completes gets [bundle].
+///  - `rank_scaled`: bundle picked by leaderboard rank; see [tiers].
+///  - `shared_pool`: currency pool split among winners; see [pool]
 ///    and [currencyKey].
 class RewardPolicySummary {
   final String type;
@@ -307,7 +307,7 @@ class RewardPolicySummary {
 class EventListing {
   final String eventKey;
 
-  /// LocalizedString — either a plain string or a map (see backend
+  /// LocalizedString: either a plain string or a map (see backend
   /// docs/02 § English-only v1). The SDK stores the raw JSON value
   /// so consumers can inspect the shape without a forced cast.
   final Object? name;
@@ -331,7 +331,7 @@ class EventListing {
   /// cap, scoreWeight, …). Same shape the server stores.
   final List<Map<String, Object?>> metrics;
 
-  /// Player-condition tree — null when there's no join gate.
+  /// Player-condition tree; null when there's no join gate.
   final Map<String, Object?>? entryRequirement;
 
   /// Cost paid on attempt start. `null` (and `EntryCost.isEmpty`)
@@ -340,7 +340,7 @@ class EventListing {
 
   /// Studio-defined free-form blob. Event-level metadata merged with
   /// the active window's metadata (window keys win). Use for UI
-  /// hints — banner image keys, theme colors, special-event copy.
+  /// hints: banner image keys, theme colors, special-event copy.
   final Map<String, Object?> metadata;
 
   /// Mid-attempt milestone rewards. Empty list when none configured.
@@ -348,7 +348,7 @@ class EventListing {
 
   /// Reward policy summary with inline bundle previews. `null` only
   /// for legacy responses that pre-date the rewards-preview feature
-  /// — modern backends always set it (`{ type: 'none' }` at minimum).
+  /// modern backends always set it (`{ type: 'none' }` at minimum).
   final RewardPolicySummary? rewardPolicy;
 
   const EventListing({
@@ -406,7 +406,7 @@ class EventListing {
 }
 
 /// One item row as exposed to game clients via the catalog endpoint.
-/// Display-relevant fields only — internal config / archival
+/// Display-relevant fields only; internal config / archival
 /// timestamps stay off the SDK wire format.
 class CatalogItem {
   final String key;
@@ -488,14 +488,14 @@ class LeaderboardEntry {
   /// One of `player`, `bot`.
   final String kind;
   final String? name;
-  final String? avatarUrl;
+  final String? avatar;
   final double score;
   final int rank;
 
   /// `true` when this entry is the player calling the API (resolved from
   /// the `externalId` passed via `includeSelf`). Highlight rows off this
-  /// rather than matching `participantId` to the external id yourself —
-  /// the server surfaces the internal player UUID, not the external one.
+  /// rather than matching `participantId` to the external id yourself,
+  /// because the server surfaces the internal player UUID, not the external one.
   /// Always `false` on entries without a self-context request, and on
   /// bot entries regardless.
   final bool isSelf;
@@ -504,7 +504,7 @@ class LeaderboardEntry {
     required this.participantId,
     required this.kind,
     required this.name,
-    required this.avatarUrl,
+    required this.avatar,
     required this.score,
     required this.rank,
     required this.isSelf,
@@ -514,10 +514,10 @@ class LeaderboardEntry {
         participantId: _readString(json, 'participantId'),
         kind: _readString(json, 'kind'),
         name: _readNullableString(json, 'name'),
-        avatarUrl: _readNullableString(json, 'avatarUrl'),
+        avatar: _readNullableString(json, 'avatar'),
         score: _readDouble(json, 'score'),
         rank: _readInt(json, 'rank'),
-        // `isSelf` was added in v0.X — server defaults missing fields to
+        // `isSelf` was added in v0.X; server defaults missing fields to
         // false anyway, and a missing key here would throw, so default
         // to `false` when absent to keep older payloads parseable.
         isSelf: json['isSelf'] is bool ? json['isSelf'] as bool : false,
@@ -544,7 +544,7 @@ class EventLeaderboard {
   final String mode;
   final bool finalized;
 
-  /// Why the board finalized — `session_terminated` (your lobby ended
+  /// Why the board finalized: `session_terminated` (your lobby ended
   /// early) vs `window_closed` (the whole event ended), or `null` while
   /// the board is still live. One of the `FinalizationReason` constants.
   final String? finalizedReason;
@@ -590,7 +590,7 @@ class Leaderboard {
   final String key;
 
   /// UUID of the leaderboard config row.
-  final String sharedLeaderboardId;
+  final String leaderboardId;
 
   final String? scope;
   final String? resetCadence;
@@ -611,7 +611,7 @@ class Leaderboard {
 
   const Leaderboard({
     required this.key,
-    required this.sharedLeaderboardId,
+    required this.leaderboardId,
     required this.scope,
     required this.resetCadence,
     required this.scoreAggregation,
@@ -624,7 +624,7 @@ class Leaderboard {
 
   factory Leaderboard.fromJson(JsonMap json) => Leaderboard(
         key: _readString(json, 'key'),
-        sharedLeaderboardId: _readString(json, 'sharedLeaderboardId'),
+        leaderboardId: _readString(json, 'leaderboardId'),
         scope: _readNullableString(json, 'scope'),
         resetCadence: _readNullableString(json, 'resetCadence'),
         scoreAggregation: _readNullableString(json, 'scoreAggregation'),
@@ -670,12 +670,12 @@ class StandingsSegment {
       );
 }
 
-/// Flexible multi-segment standings — the versatile counterpart to
+/// Flexible multi-segment standings: the versatile counterpart to
 /// [Leaderboard]. Returns one [StandingsSegment] block per segment
 /// selected by the request's `scope`, live or for a past period.
 class BoardStandings {
   final String key;
-  final String sharedLeaderboardId;
+  final String leaderboardId;
   final String scope;
   final String resetCadence;
   final String scoreAggregation;
@@ -690,7 +690,7 @@ class BoardStandings {
 
   const BoardStandings({
     required this.key,
-    required this.sharedLeaderboardId,
+    required this.leaderboardId,
     required this.scope,
     required this.resetCadence,
     required this.scoreAggregation,
@@ -701,7 +701,7 @@ class BoardStandings {
 
   factory BoardStandings.fromJson(JsonMap json) => BoardStandings(
         key: _readString(json, 'key'),
-        sharedLeaderboardId: _readString(json, 'sharedLeaderboardId'),
+        leaderboardId: _readString(json, 'leaderboardId'),
         scope: _readString(json, 'scope'),
         resetCadence: _readString(json, 'resetCadence'),
         scoreAggregation: _readString(json, 'scoreAggregation'),
@@ -713,7 +713,7 @@ class BoardStandings {
       );
 }
 
-/// Result of `LeaderboardsClient.submitScore` — the player's new
+/// Result of `LeaderboardsClient.submitScore`: the player's new
 /// standing on the board after the write. [rank] is `null` when the
 /// board can't resolve a position for the caller yet (e.g. the period
 /// just rolled over, or the score didn't beat a `best`-aggregation
@@ -758,20 +758,20 @@ class LeaderboardPeriod {
 
 class LeaderboardPeriods {
   final String key;
-  final String sharedLeaderboardId;
+  final String leaderboardId;
   final String currentPeriodStartedAt;
   final List<LeaderboardPeriod> periods;
 
   const LeaderboardPeriods({
     required this.key,
-    required this.sharedLeaderboardId,
+    required this.leaderboardId,
     required this.currentPeriodStartedAt,
     required this.periods,
   });
 
   factory LeaderboardPeriods.fromJson(JsonMap json) => LeaderboardPeriods(
         key: _readString(json, 'key'),
-        sharedLeaderboardId: _readString(json, 'sharedLeaderboardId'),
+        leaderboardId: _readString(json, 'leaderboardId'),
         currentPeriodStartedAt: _readString(json, 'currentPeriodStartedAt'),
         periods: (json['periods'] as List? ?? const [])
             .map((e) => LeaderboardPeriod.fromJson(e as JsonMap))
@@ -838,7 +838,7 @@ class OpenCrateResponse {
 }
 
 /// One milestone that fired during a single `progress()` call. The
-/// designer-defined [key] identifies which threshold tripped — surface
+/// designer-defined [key] identifies which threshold tripped; surface
 /// it in a toast or trigger a celebration animation. [grants] carries
 /// the concrete rewards (same shape `/grants/pending` returns).
 class MilestoneFired {
@@ -875,6 +875,23 @@ class ProgressResponse {
       );
 }
 
+/// Result of `events.finish()`: the finalized attempt + how it resolved.
+class FinishAttemptResponse {
+  final Attempt attempt;
+
+  /// `'completed'` (a score-attack end, or a target that was already met →
+  /// completion rewards) or `'expired'` (a target event ended before its
+  /// target: participation only).
+  final String outcome;
+
+  const FinishAttemptResponse({required this.attempt, required this.outcome});
+
+  factory FinishAttemptResponse.fromJson(JsonMap json) => FinishAttemptResponse(
+        attempt: Attempt.fromJson((json['attempt'] as JsonMap?) ?? const {}),
+        outcome: (json['outcome'] as String?) ?? 'completed',
+      );
+}
+
 class Lobby {
   final String id;
   final String eventId;
@@ -888,7 +905,7 @@ class Lobby {
   final String? fillBy;
   final int participantCount;
 
-  /// Projected bot count at read time — derived server-side from
+  /// Projected bot count at read time, derived server-side from
   /// the lobby's age and the matchmaking drip interval. Grows
   /// monotonically while the lobby is `forming`. UI typically
   /// renders `participantCount + botSlots` filled cells out of
@@ -967,7 +984,7 @@ class ProgressInput {
 
 /// One row in the player's platform-managed inventory. Returned by
 /// `GET /sdk/v1/players/:externalId/inventory`. The item's display
-/// name and other catalog metadata live on the `items` table — the
+/// name and other catalog metadata live on the `items` table; the
 /// SDK only carries the per-player quantity + free-form metadata
 /// stamped on deposits (e.g. a granted potion's roll details).
 class PlayerItemHolding {
@@ -1023,11 +1040,11 @@ class PlayerWalletHolding {
 }
 
 /// Input for `InventoryClient.consume`. The server requires
-/// [idempotencyKey] for consume — the SDK auto-generates one if you
+/// [idempotencyKey] for consume; the SDK auto-generates one if you
 /// leave it null, matching the auto-stamping behavior on every other
 /// POST endpoint.
 class ConsumeItemInput {
-  /// Positive integer — the SDK does NOT enforce; the server
+  /// Positive integer; the SDK does NOT enforce; the server
   /// validates and returns 400 on zero/negative.
   final int quantity;
 
@@ -1035,7 +1052,7 @@ class ConsumeItemInput {
   /// admin audit screen.
   final String? reason;
 
-  /// Optional override — leave null to let the client auto-stamp one.
+  /// Optional override; leave null to let the client auto-stamp one.
   final String? idempotencyKey;
 
   const ConsumeItemInput({
@@ -1073,7 +1090,7 @@ class ConsumeItemResult {
 }
 
 /// Input for `WalletClient.debit`. Same idempotency story as
-/// [ConsumeItemInput]. Credits are intentionally NOT in the SDK —
+/// [ConsumeItemInput]. Credits are intentionally NOT in the SDK:
 /// only the studio's backend (`/server/v1/...`) can mint balance, so
 /// a client SDK that exposed `credit` would invite money printing.
 class DebitWalletInput {
@@ -1113,7 +1130,7 @@ class DebitWalletResult {
 }
 
 /// Result of `players.register()`. The plaintext [secret] is only
-/// ever surfaced HERE — store it locally on the device immediately
+/// ever surfaced HERE, so store it locally on the device immediately
 /// (e.g. shared_preferences in Flutter). The next call to
 /// `register()` for the same player returns 409
 /// `player_already_registered`; lost-secret recovery is a studio-
@@ -1148,7 +1165,7 @@ class LeaderboardReadOptions {
   final int? limit;
 
   /// Bucket value for segmented boards. Required only for `context`
-  /// segmentation. For `progression`-segmented boards leave it null —
+  /// segmentation. For `progression`-segmented boards leave it null;
   /// the server derives the caller's division. Unsegmented boards
   /// ignore it.
   final String? segment;
@@ -1175,10 +1192,10 @@ class LeaderboardReadOptions {
 /// Per-call options for `LeaderboardsClient.standings`.
 class StandingsReadOptions {
   /// Which segments to return (default `"all"`):
-  ///   - `"self_segment"` — the caller's single home segment.
-  ///   - `"mine"`         — every segment the caller appears in.
-  ///   - `"segment"`      — the one named in [segment].
-  ///   - `"all"`          — every segment for the period.
+  ///   - `"self_segment"`: the caller's single home segment.
+  ///   - `"mine"`        : every segment the caller appears in.
+  ///   - `"segment"`     : the one named in [segment].
+  ///   - `"all"`         : every segment for the period.
   /// `self_segment`/`mine` resolve the caller from [externalId] (or
   /// the SDK's active identity).
   final String? scope;

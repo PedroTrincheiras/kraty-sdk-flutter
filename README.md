@@ -8,7 +8,7 @@ game-events platform. Targets:
 
 > 📖 **Full reference + examples:** <https://kraty.io/docs/sdks/flutter>
 >
-> The docs site has the complete guide — install via git pubspec,
+> The docs site has the complete guide: install via git pubspec,
 > per-runtime secret stores, every method, SSE streaming, error
 > handling. This README is the elevator pitch.
 
@@ -44,7 +44,7 @@ import 'package:kraty/kraty.dart';
 void main() async {
   final kraty = Kraty(KratyClientOptions(
     apiKey: '<your-client-sdk-key>',
-    // Defaults to https://api.kraty.io — override for local/staging.
+    // Defaults to https://api.kraty.io; override for local/staging.
     baseUrl: 'http://localhost:8080',
   ));
 
@@ -133,7 +133,7 @@ try {
   await kraty.events.start('alice', 'race');
 } on KratyApiError catch (err) {
   if (err.isLobbyForming) {
-    // Matchmaking lobby still filling — poll and retry.
+    // Matchmaking lobby still filling; poll and retry.
     final lobby = await pollLobbyUntilActive(kraty.lobbies, /* lobby id */);
     // ... retry start
   } else {
@@ -158,7 +158,7 @@ The platform contract is poll-based on the client side. Two helpers
 wrap the typical patterns:
 
 ```dart
-// Pending grants — grows the interval while empty, snaps back to
+// Pending grants: grows the interval while empty, snaps back to
 // `start` as soon as grants land.
 final completer = Completer<void>();
 unawaited(pollPendingGrants(
@@ -180,7 +180,7 @@ unawaited(pollPendingGrants(
 // Later, abort the poller:
 completer.complete();
 
-// Lobby — fixed-interval until status != 'forming' or timeout.
+// Lobby: fixed-interval until status != 'forming' or timeout.
 final lobby = await pollLobbyUntilActive(kraty.lobbies, lobbyId);
 ```
 
@@ -194,7 +194,7 @@ flutter test
 ```
 
 Tests use a hand-rolled `FakeClient` (extends `http.BaseClient`) and
-queue pre-baked `http.Response` objects — no real network IO, no
+queue pre-baked `http.Response` objects: no real network IO, no
 ports opened.
 
 ## File layout

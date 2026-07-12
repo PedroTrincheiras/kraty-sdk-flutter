@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// helpers, X-Player-Secret injection, collectAll, error helpers).
 ///
 /// Uses the same FakeClient pattern as `client_test.dart` so we can
-/// assert on outgoing request shape — headers, body, query string —
+/// assert on outgoing request shape (headers, body, query string)
 /// without spinning up a real backend.
 
 class FakeCall {
@@ -504,7 +504,7 @@ void main() {
       final err = caught! as KratyApiError;
       expect(err.code, 'conflict');
       // insufficient_entry_cost is a separate error code from
-      // wallet-debit's generic insufficient — verify the helper
+      // wallet-debit's generic insufficient, so verify the helper
       // doesn't mis-classify.
       expect(err.isInsufficientEntryCost, isFalse);
       kraty.close();
@@ -515,7 +515,7 @@ void main() {
         ..push(402, body: {
           'error': {
             'code': 'insufficient_entry_cost',
-            'message': 'not enough cash to enter — need 50',
+            'message': 'not enough cash to enter, need 50',
           },
         });
       final kraty = Kraty(_opts(fake));
@@ -677,7 +677,7 @@ void main() {
       final kraty = Kraty(optsWithStore(fake, store));
       await kraty.grants.listPending(as: 'bob');
       expect(fake.calls[0].url, contains('/players/bob/pending-grants'));
-      // `as:` is the server-side-tooling escape hatch — it skips
+      // `as:` is the server-side-tooling escape hatch; it skips
       // identity resolution entirely, so no lazy register fires.
       expect(fake.calls, hasLength(1));
       expect(kraty.activeExternalPlayerId, isNull);

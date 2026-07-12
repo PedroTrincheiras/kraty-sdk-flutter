@@ -57,6 +57,7 @@ export 'src/types.dart' show
     EventLeaderboard,
     EventLeaderboardReadOptions,
     EventListing,
+    FinishAttemptResponse,
     Grant,
     Leaderboard,
     LeaderboardEntry,
@@ -92,7 +93,7 @@ export 'src/secret_store.dart' show
     SharedPreferencesSecretStore;
 export 'src/finalization.dart' show
     DefaultMembershipStore,
-    EventBoardStatus,
+    EventLeaderboardStatus,
     FinalStanding,
     FinalizationListener,
     FinalizationReason,
@@ -108,12 +109,12 @@ export 'src/finalization.dart' show
     StandingKind,
     TrackedMembership;
 
-/// Convenience facade — instantiate one [Kraty] instead of wiring
+/// Convenience facade: instantiate one [Kraty] instead of wiring
 /// [KratyClient] + each resource client by hand. All resource clients
 /// share the same underlying [KratyClient] so retry config, telemetry,
 /// and the HTTP connection pool are shared.
 ///
-/// The minimum boot is one line — the SDK lazily registers a self-
+/// The minimum boot is one line: the SDK lazily registers a self-
 /// serve player on the first player-scoped call and persists the
 /// identity via [KratyClientOptions.secretStore]:
 ///
@@ -168,8 +169,8 @@ class Kraty {
   String? get activeExternalPlayerId => client.activeExternalPlayerId;
 
   /// Resolve the active player identity, lazily registering a fresh
-  /// one if no persisted identity exists. Most games never call this
-  /// — any player-scoped resource method triggers it transparently.
+  /// one if no persisted identity exists. Most games never call this,
+  /// since any player-scoped resource method triggers it transparently.
   /// Reach for it only when you need the id available before the
   /// first request (e.g. to pre-greet the player by id).
   Future<({String externalPlayerId, String secret})> ensureIdentity() =>
@@ -182,7 +183,7 @@ class Kraty {
 
   /// Install an explicit identity on this SDK and persist it. Use
   /// when your own auth gave you back a Kraty `externalPlayerId` +
-  /// `secret` — e.g. on a new device after a server-side device-link
+  /// `secret`, e.g. on a new device after a server-side device-link
   /// flow.
   Future<void> signIn({
     required String externalPlayerId,
@@ -191,7 +192,7 @@ class Kraty {
       client.signIn(externalPlayerId: externalPlayerId, secret: secret);
 
   /// Finalization catch-up (docs/05b). [onFinalized] fires when a board the
-  /// player is in ends — live over SSE while subscribed, OR via
+  /// player is in ends: live over SSE while subscribed, OR via
   /// [checkFinalizations] for boards that finalized while they were away
   /// (call it on app foreground / reconnect). Both paths deliver exactly
   /// once. [dismiss] / [clearReported] acknowledge handled results so they
@@ -203,7 +204,7 @@ class Kraty {
   Future<List<FinalizationResult>> checkFinalizations() =>
       client.checkFinalizations();
 
-  /// Acknowledge a handled finalization — drop it from the registry.
+  /// Acknowledge a handled finalization; drop it from the registry.
   Future<void> dismiss(MembershipRef ref) => client.dismiss(ref);
 
   /// Bulk-drop every already-reported membership. Returns the count.

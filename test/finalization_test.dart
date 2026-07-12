@@ -1,12 +1,12 @@
 import 'package:kraty/kraty.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Mirror of the TypeScript SDK's `finalization.test.ts` — the finalization
+/// Mirror of the TypeScript SDK's `finalization.test.ts`, covering the finalization
 /// catch-up (docs/05b): the single-writer invariant, the SSE + catch-up
 /// dedupe, the persisted session-vs-window reason, and dismiss/clearReported.
 
 MembershipRef get _ref =>
-    MembershipRef.eventBoard('lb-1', eventKey: 'daily');
+    MembershipRef.eventLeaderboard('lb-1', eventKey: 'daily');
 
 ({FinalizationTracker tracker, List<FinalizationResult> fired}) _make({
   bool finalized = false,
@@ -17,7 +17,7 @@ MembershipRef get _ref =>
   final tracker = FinalizationTracker(
     store: store,
     getActivePlayerId: () async => 'p1',
-    readEventBoard: (_) async => EventBoardStatus(
+    readEventLeaderboard: (_) async => EventLeaderboardStatus(
       finalized: finalized,
       reason: reason,
       self: self ?? const SelfEntry(rank: 3, score: 42),
@@ -34,7 +34,7 @@ void main() {
     final tracker = FinalizationTracker(
       store: store,
       getActivePlayerId: () async => 'p1',
-      readEventBoard: (_) async => null,
+      readEventLeaderboard: (_) async => null,
     );
     await tracker.track(_ref);
     await tracker.track(_ref);
@@ -106,7 +106,7 @@ void main() {
   test('clearReported drops delivered entries but keeps active', () async {
     final m = _make(finalized: true);
     await m.tracker.track(_ref);
-    await m.tracker.track(MembershipRef.eventBoard('lb-2'));
+    await m.tracker.track(MembershipRef.eventLeaderboard('lb-2'));
     await m.tracker.onStreamFinalized('lb-1', {
       'reason': FinalizationReason.windowClosed,
     });

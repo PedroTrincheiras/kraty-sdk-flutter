@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:kraty/kraty.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Mirror of the TypeScript SDK's `client.test.ts` — same 17
+/// Mirror of the TypeScript SDK's `client.test.ts`: the same 17
 /// scenarios ported to Dart's `test` package. The HTTP layer is
 /// driven by a hand-rolled queueing client (rather than
 /// `package:http/testing`'s `MockClient`) so we can assert on the
@@ -83,7 +83,7 @@ KratyClientOptions _baseOpts(FakeClient client, {String Function()? keyGen}) {
 }
 
 void main() {
-  group('KratyClient — request layer', () {
+  group('KratyClient: request layer', () {
     test('sends Authorization: Bearer <key>', () async {
       final fake = FakeClient()..push(200, body: {'ok': true});
       final client = KratyClient(_baseOpts(fake));
@@ -270,7 +270,7 @@ void main() {
         });
       final kraty = Kraty(_baseOpts(fake));
       // Replace the auto-constructed inner client with our fake-backed one.
-      // (Kraty's factory creates its own KratyClient — wire a single fake
+      // (Kraty's factory creates its own KratyClient, so wire a single fake
       // through by reconstructing manually.)
       final c = KratyClient(_baseOpts(fake));
       final lb = EventLeaderboardsClient(c);
@@ -444,7 +444,7 @@ void main() {
               'score': 0.0,
               'status': 'in_progress',
             },
-            // milestonesFired omitted entirely — older backend
+            // milestonesFired omitted entirely (older backend)
           }
         });
       final c = KratyClient(_baseOpts(fake));
@@ -516,14 +516,14 @@ void main() {
         ..push(200, body: {
           'data': {
             'key': 'weekly_global',
-            'sharedLeaderboardId': 'slb_1',
+            'leaderboardId': 'slb_1',
             'scope': 'game',
             'resetCadence': 'weekly',
             'scoreAggregation': 'best',
             'segment': null,
             'period': '2026-06-22T00:00:00Z',
             'entries': [
-              {'participantId': 'p1', 'kind': 'player', 'name': 'alice', 'avatarUrl': null, 'score': 42, 'rank': 1, 'isSelf': false}
+              {'participantId': 'p1', 'kind': 'player', 'name': 'alice', 'avatar': null, 'score': 42, 'rank': 1, 'isSelf': false}
             ],
             'self': null,
           }
@@ -532,7 +532,7 @@ void main() {
       final lb = LeaderboardsClient(c);
       final board = await lb.read('weekly_global', options: const LeaderboardReadOptions(limit: 10));
       expect(board.key, 'weekly_global');
-      expect(board.sharedLeaderboardId, 'slb_1');
+      expect(board.leaderboardId, 'slb_1');
       expect(board.entries.length, 1);
       expect(fake.calls[0].url, contains('/sdk/v1/leaderboards/weekly_global?limit=10'));
       c.close();
@@ -543,7 +543,7 @@ void main() {
         ..push(200, body: {
           'data': {
             'key': 'weekly_region',
-            'sharedLeaderboardId': 'slb_2',
+            'leaderboardId': 'slb_2',
             'scope': 'game',
             'resetCadence': 'weekly',
             'scoreAggregation': 'best',
@@ -581,7 +581,7 @@ void main() {
         ..push(200, body: {
           'data': {
             'key': 'weekly_global',
-            'sharedLeaderboardId': 'slb_1',
+            'leaderboardId': 'slb_1',
             'currentPeriodStartedAt': '2026-06-22T00:00:00Z',
             'periods': [
               {'periodStartedAt': '2026-06-15T00:00:00Z', 'periodEndedAt': '2026-06-22T00:00:00Z'},
@@ -603,7 +603,7 @@ void main() {
         ..push(200, body: {
           'data': {
             'key': 'weekly_global',
-            'sharedLeaderboardId': 'slb_1',
+            'leaderboardId': 'slb_1',
             'scope': 'game',
             'resetCadence': 'weekly',
             'scoreAggregation': 'best',
@@ -633,7 +633,7 @@ void main() {
         ..push(200, body: {
           'data': {
             'key': 'league',
-            'sharedLeaderboardId': 'slb_9',
+            'leaderboardId': 'slb_9',
             'scope': 'game',
             'resetCadence': 'weekly',
             'scoreAggregation': 'best',
@@ -645,7 +645,7 @@ void main() {
                 'participated': true,
                 'selfRank': 3,
                 'entries': [
-                  {'participantId': 'p1', 'kind': 'player', 'name': 'alice', 'avatarUrl': null, 'score': 90, 'rank': 1, 'isSelf': false},
+                  {'participantId': 'p1', 'kind': 'player', 'name': 'alice', 'avatar': null, 'score': 90, 'rank': 1, 'isSelf': false},
                 ],
               },
               {
@@ -690,7 +690,7 @@ void main() {
         ..push(200, body: {
           'data': {
             'key': 'league',
-            'sharedLeaderboardId': 'slb_9',
+            'leaderboardId': 'slb_9',
             'scope': 'game',
             'resetCadence': 'weekly',
             'scoreAggregation': 'best',

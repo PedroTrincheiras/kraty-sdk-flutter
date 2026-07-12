@@ -1,7 +1,7 @@
 /// Sealed-ish set of error codes the backend returns. Mirrors
 /// `api/errors.ts` on the backend side. Kept as constants (not an
 /// enum) so the SDK survives the platform adding a new code without
-/// a SDK release — consumers compare on strings, with the constants
+/// a SDK release; consumers compare on strings, with the constants
 /// below as the canonical names.
 abstract class KratyErrorCode {
   KratyErrorCode._();
@@ -60,7 +60,7 @@ class KratyErrorPayload {
 /// case). [status] is the HTTP status, [code] + [message] come from
 /// the backend's `{ error: { code, message, details? } }` envelope.
 ///
-/// Use the typed `is...` getters to switch on a code — they're cheaper
+/// Use the typed `is...` getters to switch on a code; they're cheaper
 /// to read than a chain of string comparisons and immune to typos.
 /// One getter exists per code in [KratyErrorCode]; if you need to
 /// match a code the SDK hasn't bumped to yet, use [is].
@@ -89,38 +89,38 @@ class KratyApiError implements Exception {
 
   // ── core ─────────────────────────────────────────────────────────
 
-  /// 401 — `Authorization` header missing on a protected route.
+  /// 401: `Authorization` header missing on a protected route.
   bool get isUnauthenticated => code == KratyErrorCode.unauthenticated;
 
-  /// 401 — Bearer token is malformed, revoked, or rejected.
+  /// 401: Bearer token is malformed, revoked, or rejected.
   bool get isSessionInvalid => code == KratyErrorCode.sessionInvalid;
 
-  /// 403 — authenticated but lacks the permission for this route.
+  /// 403: authenticated but lacks the permission for this route.
   bool get isForbidden => code == KratyErrorCode.forbidden;
 
-  /// 404 — referenced resource doesn't exist or is archived.
+  /// 404: referenced resource doesn't exist or is archived.
   bool get isNotFound => code == KratyErrorCode.notFound;
 
-  /// 400 — request body / query failed schema validation. `details`
+  /// 400: request body / query failed schema validation. `details`
   /// carries the field-level errors.
   bool get isValidationFailed => code == KratyErrorCode.validationFailed;
 
-  /// 409 — generic mutation conflict. More specific 409 codes get
+  /// 409: generic mutation conflict. More specific 409 codes get
   /// their own getters; this catches the rest.
   bool get isConflict => code == KratyErrorCode.conflict;
 
-  /// 429 — per-key rate limit exceeded. The SDK auto-retries with
+  /// 429: per-key rate limit exceeded. The SDK auto-retries with
   /// backoff before surfacing this.
   bool get isRateLimited => code == KratyErrorCode.rateLimited;
 
-  /// 500 — unhandled exception. Surface a generic "something went
+  /// 500: unhandled exception. Surface a generic "something went
   /// wrong" to the player.
   bool get isInternalError => code == KratyErrorCode.internalError;
 
-  /// 403 — cross-studio access attempt. Shouldn't happen via the SDK.
+  /// 403: cross-studio access attempt. Shouldn't happen via the SDK.
   bool get isTenantMismatch => code == KratyErrorCode.tenantMismatch;
 
-  /// 409 — same `idempotencyKey` used with a different request body
+  /// 409: same `idempotencyKey` used with a different request body
   /// within the 24h cache TTL. The SDK auto-stamps fresh keys per
   /// write so you only see this when you've supplied your own key.
   bool get isIdempotencyConflict =>
@@ -128,12 +128,12 @@ class KratyApiError implements Exception {
 
   // ── per-player auth ──────────────────────────────────────────────
 
-  /// 401 — `X-Player-Secret` is missing, malformed, or doesn't match
+  /// 401: `X-Player-Secret` is missing, malformed, or doesn't match
   /// the stored hash. Triggers your re-authentication flow.
   bool get isPlayerSecretInvalid =>
       code == KratyErrorCode.playerSecretInvalid;
 
-  /// 409 — `register()` was called for a player who already has a
+  /// 409: `register()` was called for a player who already has a
   /// secret. In dev/test, retry with `force: true`. In production,
   /// route to your account-recovery flow.
   bool get isPlayerAlreadyRegistered =>
@@ -141,66 +141,66 @@ class KratyApiError implements Exception {
 
   // ── events / attempts ────────────────────────────────────────────
 
-  /// 409 — the event is configured but disabled.
+  /// 409: the event is configured but disabled.
   bool get isEventDisabled => code == KratyErrorCode.eventDisabled;
 
-  /// 409 — the event has no currently-active window.
+  /// 409: the event has no currently-active window.
   bool get isNoActiveWindow => code == KratyErrorCode.noActiveWindow;
 
-  /// 503 — server couldn't allocate / find the leaderboard. Usually
-  /// transient — retry after backoff.
+  /// 503: server couldn't allocate / find the leaderboard. Usually
+  /// transient, so retry after backoff.
   bool get isNoLeaderboard => code == KratyErrorCode.noLeaderboard;
 
-  /// 429 — player burned all attempts for the current event window.
+  /// 429: player burned all attempts for the current event window.
   bool get isMaxAttemptsReached =>
       code == KratyErrorCode.maxAttemptsReached;
 
-  /// 429 — per-day attempt cap reached. Player should wait until
+  /// 429: per-day attempt cap reached. Player should wait until
   /// midnight in the event's timezone.
   bool get isMaxDailyAttemptsReached =>
       code == KratyErrorCode.maxDailyAttemptsReached;
 
-  /// 409 — reported progress on an attempt that's already
+  /// 409: reported progress on an attempt that's already
   /// `completed` / `expired`. Refresh state.
   bool get isAttemptFinished => code == KratyErrorCode.attemptFinished;
 
-  /// 400 — `progress` referenced a metric key the event doesn't
+  /// 400: `progress` referenced a metric key the event doesn't
   /// declare. SDK / game-config bug.
   bool get isInvalidMetric => code == KratyErrorCode.invalidMetric;
 
-  /// 403 — player can't see the event yet (visibility gate failed).
+  /// 403: player can't see the event yet (visibility gate failed).
   bool get isUnlockConditionFailed =>
       code == KratyErrorCode.unlockConditionFailed;
 
-  /// 500 — event config has a malformed unlock condition tree.
+  /// 500: event config has a malformed unlock condition tree.
   /// Operator should fix in the portal.
   bool get isInvalidUnlockCondition =>
       code == KratyErrorCode.invalidUnlockCondition;
 
   // ── entry requirements / cost ────────────────────────────────────
 
-  /// 403 — player attempted an event whose entry requirement failed
+  /// 403: player attempted an event whose entry requirement failed
   /// (e.g. "must own item X"). Distinct from
-  /// [isInsufficientEntryCost] — requirements are binary ownership
+  /// [isInsufficientEntryCost]: requirements are binary ownership
   /// checks, costs are transactional debits.
   bool get isEntryRequirementFailed =>
       code == KratyErrorCode.entryRequirementFailed;
 
-  /// 500 — event config has a malformed entry requirement.
+  /// 500: event config has a malformed entry requirement.
   bool get isInvalidEntryRequirement =>
       code == KratyErrorCode.invalidEntryRequirement;
 
-  /// 402 — paid event start failed because the player couldn't
+  /// 402: paid event start failed because the player couldn't
   /// cover the event's `entryCost`. The message carries the exact
-  /// resource the player ran out of ("not enough cash to enter —
-  /// need 50"). The server's atomic debit was rolled back — partial
+  /// resource the player ran out of ("not enough cash to enter,
+  /// need 50"). The server's atomic debit was rolled back, so partial
   /// spends never persist.
   bool get isInsufficientEntryCost =>
       code == KratyErrorCode.insufficientEntryCost;
 
   // ── matchmaking ──────────────────────────────────────────────────
 
-  /// 202 — lobby-matched event whose lobby isn't yet at capacity.
+  /// 202: lobby-matched event whose lobby isn't yet at capacity.
   /// Not a hard failure: poll the lobby endpoint (using
   /// `details['lobbyId']`) and retry `events.start` once it
   /// transitions out of `forming`.
@@ -223,7 +223,7 @@ class KratyNetworkError implements Exception {
 }
 
 extension KratyApiErrorIs on Object? {
-  /// Helper: `if (err.isLobbyFormingException) { ... }` — true iff
+  /// Helper: `if (err.isLobbyFormingException) { ... }`; true iff
   /// this is a `KratyApiError` with `code == 'lobby_forming'`.
   bool get isLobbyFormingException {
     final self = this;

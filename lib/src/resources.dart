@@ -16,7 +16,7 @@ String _enc(String s) => Uri.encodeComponent(s);
 /// Player-scoped resource methods accept an optional [as] override
 /// instead of requiring the caller to pass an externalPlayerId on
 /// every call. We resolve it from (1) the explicit [as] value, or
-/// (2) `client.ensureIdentity()` — which lazily mints + persists a
+/// (2) `client.ensureIdentity()`, which lazily mints + persists a
 /// player on the very first call when no identity is configured.
 Future<String> _resolvePlayerId(KratyClient client, String? as) async {
   if (as != null && as.isNotEmpty) return as;
@@ -31,7 +31,7 @@ class EventsClient {
 
   EventsClient(this._client);
 
-  /// `GET /sdk/v1/players/:externalId/events` — events whose current
+  /// `GET /sdk/v1/players/:externalId/events`: events whose current
   /// window the active player can start now. Pass `as:` to address a
   /// different player (server-side tooling only).
   Future<List<EventListing>> listForPlayer({String? as}) async {
@@ -51,11 +51,11 @@ class EventsClient {
     });
   }
 
-  /// `POST /sdk/v1/players/:p/events/:e/start` — start an attempt for
+  /// `POST /sdk/v1/players/:p/events/:e/start`: start an attempt for
   /// the active player.
   ///
   /// If the event uses matchmaking and the lobby is still forming,
-  /// the server returns 202 with `error.code = 'lobby_forming'` —
+  /// the server returns 202 with `error.code = 'lobby_forming'`, and
   /// the SDK surfaces this as a `KratyApiError`. Consumers should
   /// poll the lobby endpoint and retry.
   Future<StartAttemptResponse> start(
@@ -80,17 +80,17 @@ class EventsClient {
         windowEndsAt: '',
       );
     });
-    // Track the session/event board for finalization catch-up (docs/05b) —
+    // Track the session/event board for finalization catch-up (docs/05b);
     // fire-and-forget so it never adds latency to start.
     if (res.leaderboardId.isNotEmpty) {
       unawaited(_client
-          .trackMembership(MembershipRef.eventBoard(res.leaderboardId, eventKey: eventKey))
+          .trackMembership(MembershipRef.eventLeaderboard(res.leaderboardId, eventKey: eventKey))
           .catchError((_) {}));
     }
     return res;
   }
 
-  /// `POST /sdk/v1/players/:p/events/:e/attempts/:a/progress` —
+  /// `POST /sdk/v1/players/:p/events/:e/attempts/:a/progress`:
   /// push a metric update for the active player. Returns the updated
   /// attempt plus any milestones whose threshold was crossed by THIS
   /// update (empty list when nothing fired).
@@ -117,9 +117,38 @@ class EventsClient {
       });
     });
   }
+
+  /// `POST /sdk/v1/players/:p/events/:e/attempts/:a/finish`: end an
+  /// in-progress attempt now, locking in its current score. This is the
+  /// player-driven "I'm done" / "cash out my run" action, needed for
+  /// score-attack events (no completion target) where the player decides
+  /// when the run ends. `outcome` is `'completed'` (score-attack end / target
+  /// met, so completion rewards roll) or `'expired'` (a target event ended
+  /// early). Pull any rewards afterwards with `grants.collectAll()`.
+  Future<FinishAttemptResponse> finish(
+    String eventKey,
+    String attemptId, {
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/events/${_enc(eventKey)}/attempts/${_enc(attemptId)}/finish',
+    );
+    return _data<FinishAttemptResponse>(env, (raw) {
+      if (raw is Map) {
+        return FinishAttemptResponse.fromJson(raw.cast<String, Object?>());
+      }
+      return FinishAttemptResponse.fromJson(<String, Object?>{
+        'attempt': <String, Object?>{},
+        'outcome': 'completed',
+      });
+    });
+  }
 }
 
-/// Resource client for `/sdk/v1/leaderboards/:key` — the
+/// Resource client for `/sdk/v1/leaderboards/:key`: the
 /// dashboard-configured cross-event boards your studio defines. For
 /// the auto-created per-event-window boards addressed by UUID, see
 /// [EventLeaderboardsClient].
@@ -128,11 +157,11 @@ class LeaderboardsClient {
 
   LeaderboardsClient(this._client);
 
-  /// `GET /sdk/v1/leaderboards/:key` — snapshot read of a
+  /// `GET /sdk/v1/leaderboards/:key`: snapshot read of a
   /// dashboard-configured cross-event leaderboard.
   ///
   /// `options.segment` is required only for `context`-segmented
-  /// boards — pass the bucket value. For `progression`-segmented
+  /// boards; pass the bucket value. For `progression`-segmented
   /// boards omit it; the server derives the caller's division.
   /// Unsegmented boards ignore it.
   Future<Leaderboard> read(
@@ -165,13 +194,13 @@ class LeaderboardsClient {
     });
   }
 
-  /// `POST /sdk/v1/players/:p/leaderboards/:key/score` — submit a
+  /// `POST /sdk/v1/players/:p/leaderboards/:key/score`: submit a
   /// score for the active player directly to a dashboard-configured
   /// board, outside an event attempt. Returns the player's new score
   /// + rank.
   ///
   /// [segment] is required only for `context`-segmented boards (pass
-  /// the bucket value). For `progression`-segmented boards omit it —
+  /// the bucket value). For `progression`-segmented boards omit it;
   /// the server derives the player's division; unsegmented boards
   /// ignore it. Auto-stamped idempotency key unless you pass
   /// [idempotencyKey].
@@ -207,10 +236,10 @@ class LeaderboardsClient {
     });
   }
 
-  /// `POST /sdk/v1/players/:p/leaderboards/:key/join` — add the active
+  /// `POST /sdk/v1/players/:p/leaderboards/:key/join`: add the active
   /// player to a dashboard-configured board at score 0 WITHOUT
   /// submitting a score (they just "appear"), and return the current
-  /// standings for their segment. Idempotent — never resets an
+  /// standings for their segment. Idempotent, so it never resets an
   /// existing score.
   ///
   /// [segment] is the bucket value for `context`-segmented boards;
@@ -239,7 +268,7 @@ class LeaderboardsClient {
     });
   }
 
-  /// `GET /sdk/v1/leaderboards/:key/standings` — flexible multi-segment
+  /// `GET /sdk/v1/leaderboards/:key/standings`: flexible multi-segment
   /// read. Returns one [StandingsSegment] block per segment
   /// (`options.scope` picks which), each flagging the caller (`isSelf`
   /// on entries, `selfRank`, `participated`). Works live
@@ -248,7 +277,7 @@ class LeaderboardsClient {
   /// Use this over [read] when you want "my division"
   /// (`scope: "self_segment"`), "every division I'm in"
   /// (`scope: "mine"`), or the whole ladder (`scope: "all"`, the
-  /// default). `self_segment`/`mine` resolve the caller from
+  /// default). `self_segment` and `mine` resolve the caller from
   /// `options.externalId` (or the SDK's active identity).
   Future<BoardStandings> standings(
     String key, {
@@ -287,7 +316,7 @@ class LeaderboardsClient {
     });
   }
 
-  /// `GET /sdk/v1/leaderboards/:key/periods` — newest-first list
+  /// `GET /sdk/v1/leaderboards/:key/periods`: newest-first list
   /// of finalized snapshot periods. Pair with [read] +
   /// `LeaderboardReadOptions.period` to render "last week's top 10".
   Future<LeaderboardPeriods> listPeriods(String key, {int? limit}) async {
@@ -302,7 +331,7 @@ class LeaderboardsClient {
   }
 }
 
-/// Resource client for `/sdk/v1/event-leaderboards/:id` — the auto-generated
+/// Resource client for `/sdk/v1/event-leaderboards/:id`: the auto-generated
 /// per-event-window leaderboard, addressed by the UUID
 /// `events.start(...)` returns in `attempt.leaderboardId`. Includes
 /// Server-Sent-Events live streaming. For the dashboard-configured
@@ -336,7 +365,7 @@ class EventLeaderboardsClient {
     });
   }
 
-  /// `POST /sdk/v1/players/:p/event-leaderboards/:id/join` — add the
+  /// `POST /sdk/v1/players/:p/event-leaderboards/:id/join`: add the
   /// active player to a per-event-window board at score 0 WITHOUT
   /// starting a scoring attempt, and return the current board. The
   /// returned [EventLeaderboard.joined] is `true`. Idempotent.
@@ -363,25 +392,25 @@ class EventLeaderboardsClient {
     });
   }
 
-  /// `GET /sdk/v1/event-leaderboards/:id/stream` — opens a Server-Sent
+  /// `GET /sdk/v1/event-leaderboards/:id/stream`: opens a Server-Sent
   /// Events subscription that pushes score updates in real time.
   /// Returns a [LeaderboardStream] handle the caller drives via
   /// its `events` stream + `cancel()` method.
   ///
   /// Event kinds the server emits today:
-  ///   - `ready` — handshake, sent once after the pub/sub
+  ///   - `ready`: handshake, sent once after the pub/sub
   ///     subscription is wired. Safe to start POSTing progress as
   ///     soon as this lands without missing the resulting update.
-  ///   - `score_update` — a participant's score changed; payload
+  ///   - `score_update`: a participant's score changed; payload
   ///     carries the new rank/score for the affected entry.
-  ///   - `closed` — server is finalizing or closing. After this,
+  ///   - `closed`: server is finalizing or closing. After this,
   ///     the stream completes and `cancel()` is a no-op.
   ///
-  /// Does NOT auto-reconnect on transport drop — surface errors via
+  /// Does NOT auto-reconnect on transport drop; surface errors via
   /// the returned stream's `errors` and re-call `live()` after a
   /// backoff if you want resumption.
   ///
-  /// Low-level — prefer [subscribe] for game UIs; it polls in the
+  /// Low-level: prefer [subscribe] for game UIs; it polls in the
   /// background so bot scores tick even when no player action would
   /// otherwise trigger a server-side read.
   Future<LeaderboardStream> live(String leaderboardId) {
@@ -433,7 +462,7 @@ class EventLeaderboardsClient {
     void surface(LeaderboardStreamEvent ev) {
       if (closed) return;
       // A live `finalized` event also updates the membership registry (not
-      // just the callback) through the same single writer as catch-up —
+      // just the callback) through the same single writer as catch-up;
       // see docs/05b. Fire-and-forget; the user still gets `ev` below.
       if (ev.kind == 'finalized') {
         unawaited(_client.routeFinalized(leaderboardId, ev.data).catchError((_) {}));
@@ -469,7 +498,7 @@ class EventLeaderboardsClient {
       }
     }
 
-    // Wire SSE in the background — surface failures on the errors
+    // Wire SSE in the background: surface failures on the errors
     // stream but don't kill the poll loop if SSE drops.
     Future<void>(() async {
       try {
@@ -521,12 +550,12 @@ class EventLeaderboardsClient {
 /// stream for transport failures. Call [cancel] to tear down both
 /// transports.
 class LiveLeaderboardSubscription {
-  /// Merged event stream — yields `score_update` (deduped per
+  /// Merged event stream: yields `score_update` (deduped per
   /// participant) plus any other SSE event kinds (`ready`, `closed`,
   /// `parse-error`). Broadcast-style; safe for multiple listeners.
   final Stream<LeaderboardStreamEvent> events;
 
-  /// Transport / poll failures. Non-fatal — the subscription keeps
+  /// Transport / poll failures. Non-fatal, so the subscription keeps
   /// running. SSE drops don't stop the background poll, and vice
   /// versa.
   final Stream<Object> errors;
@@ -567,7 +596,7 @@ class GrantsClient {
   }
 
   /// Flip a pending grant to claimed for the active player.
-  /// Idempotent — claiming an already-claimed grant returns the same
+  /// Idempotent: claiming an already-claimed grant returns the same
   /// row.
   Future<Grant> claim(String grantId, {String? as}) async {
     final externalPlayerId = await _resolvePlayerId(_client, as);
@@ -583,8 +612,8 @@ class GrantsClient {
     });
   }
 
-  /// Roll a crate for the active player. Idempotent on the crate id
-  /// — replays return the previously-rolled contents grant.
+  /// Roll a crate for the active player. Idempotent on the crate id:
+  /// replays return the previously-rolled contents grant.
   Future<OpenCrateResponse> open(String grantId, {String? as}) async {
     final externalPlayerId = await _resolvePlayerId(_client, as);
     final env = await _client.request(
@@ -608,7 +637,7 @@ class GrantsClient {
   /// reward-collection moment most games have.
   ///
   /// Errors per-grant are caught and surfaced in
-  /// [CollectAllResult.failures] — one bad grant doesn't abort the
+  /// [CollectAllResult.failures]; one bad grant doesn't abort the
   /// whole sweep.
   Future<CollectAllResult> collectAll({String? as}) async {
     final pending = await listPending(as: as);
@@ -636,7 +665,7 @@ class GrantsClient {
 }
 
 /// One pending grant that `collectAll` couldn't process. The other
-/// grants in the same sweep still went through — inspect [error]
+/// grants in the same sweep still went through; inspect [error]
 /// and retry the individual operation.
 class CollectAllFailure {
   final Grant grant;
@@ -645,7 +674,7 @@ class CollectAllFailure {
 }
 
 /// Aggregate result of [GrantsClient.collectAll]. [processed] is the
-/// total pending count at the time of the call; [opened] + [claimed]
+/// total pending count at the time of the call, and [opened] + [claimed]
 /// + [failures] sum to that.
 class CollectAllResult {
   final int processed;
@@ -664,7 +693,7 @@ class CollectAllResult {
 
 /// Resource client for `/sdk/v1/players/:p/inventory(/...)`. Only
 /// surfaces meaningful data for games whose `settings.inventoryManagement`
-/// is `'platform'` — under studio-managed mode the lists come back
+/// is `'platform'`; under studio-managed mode the lists come back
 /// empty (the studio's own backend holds the canonical state). The
 /// SDK doesn't expose grant or admin-credit endpoints; those are
 /// server-API only.
@@ -673,7 +702,7 @@ class InventoryClient {
 
   InventoryClient(this._client);
 
-  /// `GET /sdk/v1/players/:p/inventory` — every item the player
+  /// `GET /sdk/v1/players/:p/inventory`: every item the player
   /// currently holds (quantity > 0). Newest-first ordering is not
   /// guaranteed; sort client-side if you need it.
   Future<List<PlayerItemHolding>> list({String? as}) async {
@@ -696,7 +725,7 @@ class InventoryClient {
     });
   }
 
-  /// `POST /sdk/v1/players/:p/inventory/:itemKey/consume` — atomic
+  /// `POST /sdk/v1/players/:p/inventory/:itemKey/consume`: atomic
   /// decrement on the active player's inventory. Auto-stamped
   /// idempotency key unless you provide one. Returns 409 (surfaced
   /// as [KratyApiError] with code `conflict`) if the player doesn't
@@ -729,7 +758,7 @@ class WalletClient {
 
   WalletClient(this._client);
 
-  /// `GET /sdk/v1/players/:p/wallet` — every economy entry the
+  /// `GET /sdk/v1/players/:p/wallet`: every economy entry the
   /// player has touched. Returns zero-balance rows alongside
   /// positive ones, so a wallet that's been emptied still surfaces.
   /// Filter client-side if you only want live balances.
@@ -753,9 +782,9 @@ class WalletClient {
     });
   }
 
-  /// `POST /sdk/v1/players/:p/wallet/:economyKey/debit` — atomic
+  /// `POST /sdk/v1/players/:p/wallet/:economyKey/debit`: atomic
   /// decrement on the active player's wallet. 409 on insufficient
-  /// balance. Credit is intentionally not exposed here — see
+  /// balance. Credit is intentionally not exposed here; see
   /// [DebitWalletInput] docs.
   Future<DebitWalletResult> debit(
     String economyKey,
@@ -778,7 +807,7 @@ class WalletClient {
   }
 }
 
-/// Resource client for `/sdk/v1/players/:p/register` — the zero-
+/// Resource client for `/sdk/v1/players/:p/register`: the zero-
 /// trust bootstrap. Game client calls `register()` once on first
 /// launch (or after the player wipes app data), captures the
 /// returned [PlayerRegistration.secret], persists it locally, and
@@ -790,7 +819,7 @@ class PlayersClient {
 
   PlayersClient(this._client);
 
-  /// `POST /sdk/v1/players/:externalId/register` — creates the
+  /// `POST /sdk/v1/players/:externalId/register`: creates the
   /// player row if it doesn't exist + mints a per-player secret.
   /// Returns 409 `player_already_registered` if the player has
   /// already claimed a secret (lost-secret recovery is an admin
@@ -799,7 +828,7 @@ class PlayersClient {
   /// Pass [force]=true to ROTATE an existing secret. Only honoured
   /// by non-`live` API keys (i.e. dev/test/staging). Useful in the
   /// "I wiped my app data and need to re-register" flow during
-  /// testing — never wire this up in a production client.
+  /// testing; never wire this up in a production client.
   Future<PlayerRegistration> register(
     String externalPlayerId, {
     bool force = false,
@@ -819,7 +848,7 @@ class PlayersClient {
   }
 }
 
-/// Resource client for `/sdk/v1/catalog` — single-shot read of every
+/// Resource client for `/sdk/v1/catalog`: single-shot read of every
 /// item + currency configured for the calling game. Studios call this
 /// once at boot and cache locally; pairs with `events.listForPlayer`
 /// (which inlines reward-bundle previews) so a UI can render names,
@@ -830,7 +859,7 @@ class CatalogClient {
 
   CatalogClient(this._client);
 
-  /// `GET /sdk/v1/catalog` — items + currencies for the calling
+  /// `GET /sdk/v1/catalog`: items + currencies for the calling
   /// game. Game is derived from the API key; no parameters.
   Future<Catalog> read() async {
     final env = await _client.request(method: 'GET', path: '/sdk/v1/catalog');
@@ -886,7 +915,7 @@ class PollPendingGrantsOptions {
 
 /// Adaptive polling for a player's pending grants. Grows the interval
 /// while the queue is empty; resets to the floor when grants land.
-/// Resolves when the [signal] future completes (e.g.,
+/// Resolves when the [signal] future completes (for example,
 /// `Future.delayed(...).then(...)` or a `Completer.future`).
 Future<void> pollPendingGrants(
   GrantsClient grants, {

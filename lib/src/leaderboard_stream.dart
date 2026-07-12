@@ -6,16 +6,16 @@ import 'package:http/http.dart' as http;
 import 'errors.dart';
 
 /// One event emitted by the leaderboard SSE stream.
-/// [kind] is the SSE `event:` line — typically:
-///   - `ready` — handshake, sent once after the subscription is wired
-///   - `score_update` — a participant's score / rank changed
-///   - `finalized` — the board ended (a session/lobby terminated, or the
+/// [kind] is the SSE `event:` line. Typically:
+///   - `ready`: handshake, sent once after the subscription is wired
+///   - `score_update`: a participant's score / rank changed
+///   - `finalized`: the board ended (a session/lobby terminated, or the
 ///     event window closed). [data] carries `reason`
 ///     (`session_terminated` | `window_closed`) and `standings`
-///     (a list of `{participantId, rank, score, name, kind}`) — find the
+///     (a list of `{participantId, rank, score, name, kind}`). Find the
 ///     caller by `participantId` to show their placement, then stop
 ///     expecting `score_update`s.
-///   - `closed` — server is finalizing or closing the stream
+///   - `closed`: server is finalizing or closing the stream
 ///
 /// [data] is the parsed `data:` JSON line (or null if it didn't parse).
 class LeaderboardStreamEvent {
@@ -25,17 +25,17 @@ class LeaderboardStreamEvent {
 }
 
 /// Handle to an active SSE subscription. Call [cancel] to stop. Errors
-/// from the underlying stream surface on [errors] — caller can decide
-/// to reconnect or give up.
+/// from the underlying stream surface on [errors], and the caller can
+/// decide to reconnect or give up.
 class LeaderboardStream {
-  /// Event stream — yields `ready` / `score_update` / `closed` /
+  /// Event stream: yields `ready` / `score_update` / `closed` /
   /// any future event kinds the server adds. Single-subscriber.
   final Stream<LeaderboardStreamEvent> events;
 
   /// Transport failures (network drop, server crash mid-stream).
   /// Production code typically subscribes to this and re-invokes
   /// `leaderboards.live(...)` after a backoff. The SDK does NOT
-  /// auto-reconnect — that policy belongs to the consumer.
+  /// auto-reconnect; that policy belongs to the consumer.
   final Stream<Object> errors;
 
   final Future<void> Function() _cancel;
@@ -46,20 +46,20 @@ class LeaderboardStream {
     this._cancel,
   );
 
-  /// Cancels the subscription + closes the HTTP socket. Idempotent —
-  /// safe to call after the server emits `closed`.
+  /// Cancels the subscription + closes the HTTP socket. Idempotent, so
+  /// it's safe to call after the server emits `closed`.
   Future<void> cancel() => _cancel();
 }
 
 /// Opens an SSE subscription to a leaderboard. Returns a
 /// [LeaderboardStream] handle the caller drives via its event/error
-/// streams. Does NOT auto-reconnect — wrap it yourself when the
+/// streams. Does NOT auto-reconnect; wrap it yourself when the
 /// underlying transport drops.
 ///
 /// Implementation: opens a long-lived `http.Request` (NOT a
 /// `http.Client.get`) and parses the SSE framing line by line.
 /// `\n\n` separates events; `event:` / `data:` are the keys we read.
-/// Comment lines starting with `:` are heartbeats — ignored.
+/// Comment lines starting with `:` are heartbeats, so they're ignored.
 Future<LeaderboardStream> openLeaderboardStream({
   required String baseUrl,
   required String leaderboardId,
@@ -99,7 +99,7 @@ Future<LeaderboardStream> openLeaderboardStream({
         }
       }
     } catch (_) {
-      // Body wasn't JSON — fall back to the status code as message.
+      // Body wasn't JSON, so fall back to the status code as message.
     }
     throw KratyApiError(
       status: response.statusCode,
@@ -145,7 +145,7 @@ Future<LeaderboardStream> openLeaderboardStream({
         return;
       }
       if (line.startsWith(':')) {
-        // Comment / heartbeat — ignore.
+        // Comment / heartbeat: ignore.
         return;
       }
       final colonIdx = line.indexOf(':');
@@ -163,7 +163,7 @@ Future<LeaderboardStream> openLeaderboardStream({
           if (dataBuffer.isNotEmpty) dataBuffer.write('\n');
           dataBuffer.write(value);
           break;
-        // SSE also defines `id` and `retry` — we don't use them.
+        // SSE also defines `id` and `retry`, which we don't use.
         default:
           break;
       }
