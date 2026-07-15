@@ -489,6 +489,10 @@ class LeaderboardEntry {
   final String kind;
   final String? name;
   final String? avatar;
+
+  /// ISO-3166 alpha-2 country of the player (e.g. `'PT'`) for rendering a
+  /// flag; `null` for bots and when the server couldn't resolve it.
+  final String? country;
   final double score;
   final int rank;
 
@@ -505,6 +509,7 @@ class LeaderboardEntry {
     required this.kind,
     required this.name,
     required this.avatar,
+    this.country,
     required this.score,
     required this.rank,
     required this.isSelf,
@@ -515,6 +520,7 @@ class LeaderboardEntry {
         kind: _readString(json, 'kind'),
         name: _readNullableString(json, 'name'),
         avatar: _readNullableString(json, 'avatar'),
+        country: _readNullableString(json, 'country'),
         score: _readDouble(json, 'score'),
         rank: _readInt(json, 'rank'),
         // `isSelf` was added in v0.X; server defaults missing fields to

@@ -4,6 +4,13 @@ All notable changes to `kraty` (Kraty Dart / Flutter SDK) live here.
 Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [SemVer](https://semver.org/).
 
+## [0.11.0](https://github.com/PedroTrincheiras/Kraty/compare/sdk-client-flutter-v0.10.0...sdk-client-flutter-v0.11.0) (2026-07-15)
+
+
+### Features
+
+* **leaderboards:** server-side country on join + country on entries/register (flags) ([666c505](https://github.com/PedroTrincheiras/Kraty/commit/666c5051211efef1de97b1917e43f78327959581))
+
 ## [0.10.0](https://github.com/PedroTrincheiras/Kraty/compare/sdk-client-flutter-v0.9.0...sdk-client-flutter-v0.10.0) (2026-07-12)
 
 
