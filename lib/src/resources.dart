@@ -846,6 +846,43 @@ class PlayersClient {
       return PlayerRegistration.fromJson(const <String, Object?>{});
     });
   }
+
+  /// `PUT /sdk/v1/players/:externalId/identity`: set the active player's
+  /// OWN display name (+ optional [avatar]) — e.g. from a "choose your
+  /// username" screen. Overrides the identity auto-generated from the
+  /// game's pool and surfaces on leaderboards.
+  ///
+  /// Authorized by the player's own secret, so a client can only ever
+  /// change ITS OWN identity. This trusts the client; moderate names from
+  /// your backend (server SDK `players.setIdentity`) if you need to. Omit
+  /// [avatar] to clear it. [as] targets another player (server-side
+  /// tooling only). Throws `KratyApiException` `validation_failed` (400)
+  /// on an empty or over-long name.
+  Future<({String name, String? avatar})> setIdentity(
+    String name, {
+    String? avatar,
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'PUT',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/identity',
+      body: <String, Object?>{
+        'name': name,
+        if (avatar != null) 'avatar': avatar,
+      },
+    );
+    return _data<({String name, String? avatar})>(env, (raw) {
+      final map = raw is Map ? raw.cast<String, Object?>() : const <String, Object?>{};
+      final identity = map['syntheticIdentity'];
+      final im =
+          identity is Map ? identity.cast<String, Object?>() : const <String, Object?>{};
+      return (
+        name: (im['name'] as String?) ?? name,
+        avatar: im['avatar'] as String?,
+      );
+    });
+  }
 }
 
 /// Resource client for `/sdk/v1/catalog`: single-shot read of every
