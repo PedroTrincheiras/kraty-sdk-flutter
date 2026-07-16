@@ -858,7 +858,7 @@ class PlayersClient {
   /// [avatar] to clear it. [as] targets another player (server-side
   /// tooling only). Throws `KratyApiException` `validation_failed` (400)
   /// on an empty or over-long name.
-  Future<({String name, String? avatar})> setIdentity(
+  Future<PlayerIdentity?> setIdentity(
     String name, {
     String? avatar,
     String? as,
@@ -872,15 +872,48 @@ class PlayersClient {
         if (avatar != null) 'avatar': avatar,
       },
     );
-    return _data<({String name, String? avatar})>(env, (raw) {
+    return _data<PlayerIdentity?>(env, (raw) {
       final map = raw is Map ? raw.cast<String, Object?>() : const <String, Object?>{};
-      final identity = map['syntheticIdentity'];
-      final im =
-          identity is Map ? identity.cast<String, Object?>() : const <String, Object?>{};
-      return (
-        name: (im['name'] as String?) ?? name,
-        avatar: im['avatar'] as String?,
-      );
+      final di = map['displayIdentity'];
+      if (di is Map) return PlayerIdentity.fromJson(di.cast<String, Object?>());
+      return null;
+    });
+  }
+
+  /// GET the player's REAL display identity — what [setIdentity] wrote,
+  /// falling back to the anonymized pool value when the player never
+  /// renamed themselves. Enriched with the server-resolved `country` so
+  /// UI can render a flag in one round-trip.
+  Future<PlayerIdentity?> getIdentity({String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/identity',
+    );
+    return _data<PlayerIdentity?>(env, (raw) {
+      final map = raw is Map ? raw.cast<String, Object?>() : const <String, Object?>{};
+      final di = map['displayIdentity'];
+      if (di is Map) return PlayerIdentity.fromJson(di.cast<String, Object?>());
+      return null;
+    });
+  }
+
+  /// GET the player's ANONYMIZED identity — always the immutable
+  /// synthetic-pool value plus country, regardless of any [setIdentity]
+  /// overrides. Use for public boards where the real name shouldn't
+  /// leak. Pair with [getIdentity] for a "real if set, anonymized
+  /// otherwise" flow.
+  Future<PlayerIdentity?> getAnonymizedIdentity({String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/identity',
+    );
+    return _data<PlayerIdentity?>(env, (raw) {
+      final map = raw is Map ? raw.cast<String, Object?>() : const <String, Object?>{};
+      final ai = map['anonymizedIdentity'];
+      if (ai is Map) return PlayerIdentity.fromJson(ai.cast<String, Object?>());
+      return null;
     });
   }
 }

@@ -493,6 +493,17 @@ class LeaderboardEntry {
   /// ISO-3166 alpha-2 country of the player (e.g. `'PT'`) for rendering a
   /// flag; `null` for bots and when the server couldn't resolve it.
   final String? country;
+
+  /// Immutable anonymized display name for players (the synthetic-pool
+  /// value). [name] / [avatar] above hold the player's real display value
+  /// (from `setIdentity`) with a fallback to the pool value; these fields
+  /// carry the pool value directly so games can render a
+  /// privacy-preserving view (public boards, cross-game aggregations)
+  /// without a second lookup. `null` on bot entries and on rows that
+  /// predate the split feature.
+  final String? anonymizedName;
+  final String? anonymizedAvatar;
+
   final double score;
   final int rank;
 
@@ -510,6 +521,8 @@ class LeaderboardEntry {
     required this.name,
     required this.avatar,
     this.country,
+    this.anonymizedName,
+    this.anonymizedAvatar,
     required this.score,
     required this.rank,
     required this.isSelf,
@@ -521,6 +534,8 @@ class LeaderboardEntry {
         name: _readNullableString(json, 'name'),
         avatar: _readNullableString(json, 'avatar'),
         country: _readNullableString(json, 'country'),
+        anonymizedName: _readNullableString(json, 'anonymizedName'),
+        anonymizedAvatar: _readNullableString(json, 'anonymizedAvatar'),
         score: _readDouble(json, 'score'),
         rank: _readInt(json, 'rank'),
         // `isSelf` was added in v0.X; server defaults missing fields to
@@ -1148,12 +1163,28 @@ class PlayerRegistration {
   final String? secretPrefix;
   final String? registeredAt;
 
+  /// ISO-3166 alpha-2 country resolved server-side.
+  final String? country;
+
+  /// Real display identity: reflects the value `setIdentity` wrote,
+  /// falling back to the synthetic-pool value when the player never
+  /// renamed themselves. Enriched with country.
+  final PlayerIdentity? displayIdentity;
+
+  /// Immutable anonymized identity (synthetic-pool value) enriched with
+  /// country. `setIdentity` never touches this; use it for
+  /// privacy-preserving surfaces (public boards).
+  final PlayerIdentity? anonymizedIdentity;
+
   const PlayerRegistration({
     required this.playerId,
     required this.externalPlayerId,
     required this.secret,
     required this.secretPrefix,
     required this.registeredAt,
+    this.country,
+    this.displayIdentity,
+    this.anonymizedIdentity,
   });
 
   factory PlayerRegistration.fromJson(JsonMap json) => PlayerRegistration(
@@ -1162,6 +1193,37 @@ class PlayerRegistration {
         secret: _readString(json, 'secret'),
         secretPrefix: _readNullableString(json, 'secretPrefix'),
         registeredAt: _readNullableString(json, 'registeredAt'),
+        country: _readNullableString(json, 'country'),
+        displayIdentity: json['displayIdentity'] is Map
+            ? PlayerIdentity.fromJson(
+                (json['displayIdentity'] as Map).cast<String, Object?>(),
+              )
+            : null,
+        anonymizedIdentity: json['anonymizedIdentity'] is Map
+            ? PlayerIdentity.fromJson(
+                (json['anonymizedIdentity'] as Map).cast<String, Object?>(),
+              )
+            : null,
+      );
+}
+
+/// Public identity envelope surfaced on player responses: `name` +
+/// optional `avatar` enriched with the player's `country`. Returned by
+/// both `players.getIdentity()` (real display value) and
+/// `players.getAnonymizedIdentity()` (immutable synthetic-pool value);
+/// `country` is the same on either view because a player has one real
+/// country regardless of which name/avatar the caller chose to render.
+class PlayerIdentity {
+  final String name;
+  final String? avatar;
+  final String? country;
+
+  const PlayerIdentity({required this.name, this.avatar, this.country});
+
+  factory PlayerIdentity.fromJson(JsonMap json) => PlayerIdentity(
+        name: _readString(json, 'name'),
+        avatar: _readNullableString(json, 'avatar'),
+        country: _readNullableString(json, 'country'),
       );
 }
 
