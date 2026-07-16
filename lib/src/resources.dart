@@ -916,6 +916,47 @@ class PlayersClient {
       return null;
     });
   }
+
+  /// PUT the calling player's free-form `metadata` bag wholesale.
+  /// Studio-defined keys — anything the platform doesn't cover
+  /// (VIP flag, gender, preferred language, cohort). Surfaced on every
+  /// leaderboard entry as `entry.player.metadata`. Use [mergeMetadata]
+  /// if you only want to update a subset of keys.
+  Future<Map<String, Object?>> setMetadata(
+    Map<String, Object?> metadata, {
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'PUT',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/metadata',
+      body: metadata,
+    );
+    return _data<Map<String, Object?>>(env, (raw) {
+      final map = raw is Map ? raw.cast<String, Object?>() : const <String, Object?>{};
+      final m = map['metadata'];
+      return m is Map ? m.cast<String, Object?>() : <String, Object?>{};
+    });
+  }
+
+  /// PATCH the calling player's metadata: shallow-merge [patch] into
+  /// the existing bag. Keys not in [patch] stay untouched.
+  Future<Map<String, Object?>> mergeMetadata(
+    Map<String, Object?> patch, {
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'PATCH',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/metadata',
+      body: patch,
+    );
+    return _data<Map<String, Object?>>(env, (raw) {
+      final map = raw is Map ? raw.cast<String, Object?>() : const <String, Object?>{};
+      final m = map['metadata'];
+      return m is Map ? m.cast<String, Object?>() : <String, Object?>{};
+    });
+  }
 }
 
 /// Resource client for `/sdk/v1/catalog`: single-shot read of every
