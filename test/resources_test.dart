@@ -732,6 +732,167 @@ void main() {
     });
   });
 
+  group('friends.*', () {
+    test('list unwraps { friends: [...] } with identity + presence', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'friends': [
+              {
+                'externalPlayerId': 'bob',
+                'displayIdentity': {'name': 'Bob', 'avatar': null, 'country': 'PT'},
+                'friendsSince': '2026-06-08T00:00:00Z',
+                'online': true,
+                'lastActiveAt': '2026-06-08T17:00:00Z',
+                'status': 'in_match',
+              },
+            ],
+          },
+        });
+      final kraty = Kraty(_opts(fake));
+      final friends = await kraty.friends.list(as: 'alice');
+      expect(friends, hasLength(1));
+      expect(friends.first.externalPlayerId, 'bob');
+      expect(friends.first.displayIdentity?.name, 'Bob');
+      expect(friends.first.displayIdentity?.country, 'PT');
+      expect(friends.first.online, isTrue);
+      expect(friends.first.status, 'in_match');
+      expect(fake.calls.single.url, '$_baseUrl/sdk/v1/players/alice/friends');
+      kraty.close();
+    });
+
+    test('add with friendCode returns pending request', () async {
+      final fake = FakeClient()
+        ..push(201, body: {
+          'data': {
+            'status': 'pending',
+            'request': {
+              'requestId': 'req-1',
+              'direction': 'outgoing',
+              'player': {
+                'externalPlayerId': 'carol',
+                'displayIdentity': {'name': 'Carol'},
+              },
+              'createdAt': '2026-06-08T00:00:00Z',
+            },
+          },
+        });
+      final kraty = Kraty(_opts(fake));
+      final res = await kraty.friends.add(
+        FriendTarget.byCode('ABC123'),
+        as: 'alice',
+      );
+      expect(res.status, 'pending');
+      expect(res.request?.requestId, 'req-1');
+      expect(res.request?.direction, 'outgoing');
+      expect(res.request?.player.externalPlayerId, 'carol');
+      expect(res.friend, isNull);
+      final body = jsonDecode(fake.calls.single.body!) as Map<String, Object?>;
+      expect(body['friendCode'], 'ABC123');
+      expect(body.containsKey('externalPlayerId'), isFalse);
+      expect(
+        fake.calls.single.url,
+        '$_baseUrl/sdk/v1/players/alice/friends/requests',
+      );
+      kraty.close();
+    });
+
+    test('add reciprocal auto-accept returns friend', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'status': 'accepted',
+            'friend': {
+              'externalPlayerId': 'dave',
+              'displayIdentity': {'name': 'Dave'},
+              'friendsSince': '2026-06-08T00:00:00Z',
+              'online': false,
+              'lastActiveAt': null,
+              'status': null,
+            },
+          },
+        });
+      final kraty = Kraty(_opts(fake));
+      final res = await kraty.friends.add(
+        FriendTarget.byExternalPlayerId('dave'),
+        as: 'alice',
+      );
+      expect(res.status, 'accepted');
+      expect(res.friend?.externalPlayerId, 'dave');
+      expect(res.request, isNull);
+      final body = jsonDecode(fake.calls.single.body!) as Map<String, Object?>;
+      expect(body['externalPlayerId'], 'dave');
+      kraty.close();
+    });
+
+    test('heartbeat sends status + parses presence', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'online': true,
+            'lastActiveAt': '2026-06-08T17:00:00Z',
+            'status': 'lobby',
+          },
+        });
+      final kraty = Kraty(_opts(fake));
+      final presence = await kraty.friends.heartbeat(status: 'lobby', as: 'alice');
+      expect(presence.online, isTrue);
+      expect(presence.status, 'lobby');
+      final body = jsonDecode(fake.calls.single.body!) as Map<String, Object?>;
+      expect(body['status'], 'lobby');
+      expect(fake.calls.single.method, 'POST');
+      expect(fake.calls.single.url, '$_baseUrl/sdk/v1/players/alice/presence');
+      kraty.close();
+    });
+
+    test('search unwraps { results: [...] } and sends q + limit', () async {
+      final fake = FakeClient()
+        ..push(200, body: {
+          'data': {
+            'results': [
+              {
+                'externalPlayerId': 'eve',
+                'displayIdentity': {'name': 'Eve'},
+                'relationship': 'request_incoming',
+              },
+            ],
+          },
+        });
+      final kraty = Kraty(_opts(fake));
+      final results = await kraty.friends.search('ev', limit: 10, as: 'alice');
+      expect(results, hasLength(1));
+      expect(results.first.externalPlayerId, 'eve');
+      expect(results.first.relationship, 'request_incoming');
+      expect(fake.calls.single.url,
+          '$_baseUrl/sdk/v1/players/alice/friends/search?q=ev&limit=10');
+      kraty.close();
+    });
+
+    test('decline / cancelRequest / remove / unblock hit the right verbs', () async {
+      final fake = FakeClient()
+        ..push(200, body: {'data': {'declined': true}})
+        ..push(200, body: {'data': {'cancelled': true}})
+        ..push(200, body: {'data': {'removed': true}})
+        ..push(200, body: {'data': {'unblocked': true}});
+      final kraty = Kraty(_opts(fake));
+      await kraty.friends.decline('req-1', as: 'alice');
+      await kraty.friends.cancelRequest('req-2', as: 'alice');
+      await kraty.friends.remove('bob', as: 'alice');
+      await kraty.friends.unblock('carol', as: 'alice');
+      expect(fake.calls[0].method, 'POST');
+      expect(fake.calls[0].url,
+          '$_baseUrl/sdk/v1/players/alice/friends/requests/req-1/decline');
+      expect(fake.calls[1].method, 'DELETE');
+      expect(fake.calls[1].url,
+          '$_baseUrl/sdk/v1/players/alice/friends/requests/req-2');
+      expect(fake.calls[2].method, 'DELETE');
+      expect(fake.calls[2].url, '$_baseUrl/sdk/v1/players/alice/friends/bob');
+      expect(fake.calls[3].method, 'DELETE');
+      expect(fake.calls[3].url, '$_baseUrl/sdk/v1/players/alice/blocks/carol');
+      kraty.close();
+    });
+  });
+
   group('InMemorySecretStore', () {
     test('read/write/remove roundtrip', () async {
       final store = InMemorySecretStore();

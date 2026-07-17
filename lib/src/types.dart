@@ -1311,3 +1311,245 @@ class EventLeaderboardReadOptions {
     this.externalId,
   });
 }
+
+// ── Friends / social graph ─────────────────────────────────────────────
+
+/// Reads a nullable nested [PlayerIdentity] under [key]. `null` when the
+/// key is absent or not a map (e.g. a friend who never set an identity).
+PlayerIdentity? _readIdentity(JsonMap json, String key) {
+  final v = json[key];
+  return v is Map ? PlayerIdentity.fromJson(v.cast<String, Object?>()) : null;
+}
+
+/// A confirmed friend, enriched with identity + live presence. Mirrors the
+/// OpenAPI `Friend` component. [online] / [lastActiveAt] / [status] come
+/// from the friend's heartbeat and are only fresh while they keep beating.
+class Friend {
+  final String externalPlayerId;
+  final PlayerIdentity? displayIdentity;
+
+  /// ISO timestamp the friendship was established.
+  final String friendsSince;
+  final bool online;
+
+  /// ISO timestamp of their last heartbeat, or `null` when never/expired.
+  final String? lastActiveAt;
+
+  /// Free-form client-set status ("in_match", "lobby", …), or `null`.
+  final String? status;
+
+  const Friend({
+    required this.externalPlayerId,
+    required this.displayIdentity,
+    required this.friendsSince,
+    required this.online,
+    required this.lastActiveAt,
+    required this.status,
+  });
+
+  factory Friend.fromJson(JsonMap json) => Friend(
+        externalPlayerId: _readString(json, 'externalPlayerId'),
+        displayIdentity: _readIdentity(json, 'displayIdentity'),
+        friendsSince: _readString(json, 'friendsSince'),
+        online: _readBool(json, 'online'),
+        lastActiveAt: _readNullableString(json, 'lastActiveAt'),
+        status: _readNullableString(json, 'status'),
+      );
+}
+
+/// The caller's shareable friend code + display identity.
+class FriendCode {
+  final String friendCode;
+  final PlayerIdentity? displayIdentity;
+
+  const FriendCode({required this.friendCode, required this.displayIdentity});
+
+  factory FriendCode.fromJson(JsonMap json) => FriendCode(
+        friendCode: _readString(json, 'friendCode'),
+        displayIdentity: _readIdentity(json, 'displayIdentity'),
+      );
+}
+
+/// The player's own presence after a heartbeat.
+class PlayerPresence {
+  final bool online;
+  final String? lastActiveAt;
+  final String? status;
+
+  const PlayerPresence({
+    required this.online,
+    required this.lastActiveAt,
+    required this.status,
+  });
+
+  factory PlayerPresence.fromJson(JsonMap json) => PlayerPresence(
+        online: _readBool(json, 'online'),
+        lastActiveAt: _readNullableString(json, 'lastActiveAt'),
+        status: _readNullableString(json, 'status'),
+      );
+}
+
+/// The other party on a [FriendRequest]: their external id + display
+/// identity. Mirrors the inline `player` object on the OpenAPI
+/// `FriendRequest` component.
+class FriendRequestPlayer {
+  final String externalPlayerId;
+  final PlayerIdentity? displayIdentity;
+
+  const FriendRequestPlayer({
+    required this.externalPlayerId,
+    required this.displayIdentity,
+  });
+
+  factory FriendRequestPlayer.fromJson(JsonMap json) => FriendRequestPlayer(
+        externalPlayerId: _readString(json, 'externalPlayerId'),
+        displayIdentity: _readIdentity(json, 'displayIdentity'),
+      );
+}
+
+/// A pending friend request, incoming or outgoing.
+class FriendRequest {
+  final String requestId;
+
+  /// One of `incoming`, `outgoing`.
+  final String direction;
+  final FriendRequestPlayer player;
+  final String createdAt;
+
+  const FriendRequest({
+    required this.requestId,
+    required this.direction,
+    required this.player,
+    required this.createdAt,
+  });
+
+  factory FriendRequest.fromJson(JsonMap json) => FriendRequest(
+        requestId: _readString(json, 'requestId'),
+        direction: _readString(json, 'direction'),
+        player: FriendRequestPlayer.fromJson(
+          json['player'] is Map
+              ? (json['player']! as Map).cast<String, Object?>()
+              : const <String, Object?>{},
+        ),
+        createdAt: _readString(json, 'createdAt'),
+      );
+}
+
+/// The caller's pending incoming + outgoing friend requests.
+class FriendRequests {
+  final List<FriendRequest> incoming;
+  final List<FriendRequest> outgoing;
+
+  const FriendRequests({required this.incoming, required this.outgoing});
+
+  factory FriendRequests.fromJson(JsonMap json) => FriendRequests(
+        incoming: ((json['incoming'] as List?) ?? const [])
+            .whereType<Map<Object?, Object?>>()
+            .map((e) => FriendRequest.fromJson(e.cast<String, Object?>()))
+            .toList(growable: false),
+        outgoing: ((json['outgoing'] as List?) ?? const [])
+            .whereType<Map<Object?, Object?>>()
+            .map((e) => FriendRequest.fromJson(e.cast<String, Object?>()))
+            .toList(growable: false),
+      );
+}
+
+/// A username-search hit + the caller's relationship to that player.
+class FriendSearchResult {
+  final String externalPlayerId;
+  final PlayerIdentity? displayIdentity;
+
+  /// One of `none`, `friends`, `request_incoming`, `request_outgoing`.
+  final String relationship;
+
+  const FriendSearchResult({
+    required this.externalPlayerId,
+    required this.displayIdentity,
+    required this.relationship,
+  });
+
+  factory FriendSearchResult.fromJson(JsonMap json) => FriendSearchResult(
+        externalPlayerId: _readString(json, 'externalPlayerId'),
+        displayIdentity: _readIdentity(json, 'displayIdentity'),
+        relationship: _readString(json, 'relationship').isEmpty
+            ? 'none'
+            : _readString(json, 'relationship'),
+      );
+}
+
+/// A player the caller has blocked.
+class BlockedPlayer {
+  final String externalPlayerId;
+  final PlayerIdentity? displayIdentity;
+
+  /// ISO timestamp the block was created.
+  final String blockedAt;
+
+  const BlockedPlayer({
+    required this.externalPlayerId,
+    required this.displayIdentity,
+    required this.blockedAt,
+  });
+
+  factory BlockedPlayer.fromJson(JsonMap json) => BlockedPlayer(
+        externalPlayerId: _readString(json, 'externalPlayerId'),
+        displayIdentity: _readIdentity(json, 'displayIdentity'),
+        blockedAt: _readString(json, 'blockedAt'),
+      );
+}
+
+/// Result of `friends.add`: either a newly-pending request, or an
+/// immediately-accepted friendship when the other player had already
+/// requested the caller (reciprocal auto-accept). [status] is `pending`
+/// (see [request]) or `accepted` (see [friend]).
+class SendFriendRequestResult {
+  /// One of `pending`, `accepted`.
+  final String status;
+  final FriendRequest? request;
+  final Friend? friend;
+
+  const SendFriendRequestResult({
+    required this.status,
+    required this.request,
+    required this.friend,
+  });
+
+  factory SendFriendRequestResult.fromJson(JsonMap json) =>
+      SendFriendRequestResult(
+        status: _readString(json, 'status').isEmpty
+            ? 'pending'
+            : _readString(json, 'status'),
+        request: json['request'] is Map
+            ? FriendRequest.fromJson(
+                (json['request']! as Map).cast<String, Object?>(),
+              )
+            : null,
+        friend: json['friend'] is Map
+            ? Friend.fromJson((json['friend']! as Map).cast<String, Object?>())
+            : null,
+      );
+}
+
+/// Add-or-block target: exactly one of the two identifiers. Mirrors the
+/// TypeScript SDK's `{ friendCode } | { externalPlayerId }` union with a
+/// pair of factory constructors so the call site reads
+/// `FriendTarget.byCode('ABC123')` / `FriendTarget.byExternalPlayerId('p_9')`.
+class FriendTarget {
+  final String? friendCode;
+  final String? externalPlayerId;
+
+  const FriendTarget._({this.friendCode, this.externalPlayerId});
+
+  /// Target a player by their shareable friend code.
+  factory FriendTarget.byCode(String friendCode) =>
+      FriendTarget._(friendCode: friendCode);
+
+  /// Target a player by their external player id.
+  factory FriendTarget.byExternalPlayerId(String externalPlayerId) =>
+      FriendTarget._(externalPlayerId: externalPlayerId);
+
+  JsonMap toJson() => <String, Object?>{
+        if (friendCode != null) 'friendCode': friendCode,
+        if (externalPlayerId != null) 'externalPlayerId': externalPlayerId,
+      };
+}

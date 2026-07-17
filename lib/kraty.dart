@@ -31,6 +31,7 @@ export 'src/resources.dart' show
     CollectAllResult,
     EventLeaderboardsClient,
     EventsClient,
+    FriendsClient,
     GrantsClient,
     InventoryClient,
     LeaderboardsClient,
@@ -43,6 +44,7 @@ export 'src/resources.dart' show
     pollPendingGrants;
 export 'src/types.dart' show
     Attempt,
+    BlockedPlayer,
     BoardStandings,
     Catalog,
     CatalogCurrency,
@@ -58,6 +60,13 @@ export 'src/types.dart' show
     EventLeaderboardReadOptions,
     EventListing,
     FinishAttemptResponse,
+    Friend,
+    FriendCode,
+    FriendRequest,
+    FriendRequestPlayer,
+    FriendRequests,
+    FriendSearchResult,
+    FriendTarget,
     Grant,
     Leaderboard,
     LeaderboardEntry,
@@ -70,7 +79,9 @@ export 'src/types.dart' show
     MilestoneFired,
     MilestoneRewardPreview,
     OpenCrateResponse,
+    PlayerIdentity,
     PlayerItemHolding,
+    PlayerPresence,
     PlayerRegistration,
     PlayerWalletHolding,
     ProgressInput,
@@ -79,6 +90,7 @@ export 'src/types.dart' show
     RewardEntryPreview,
     RewardPolicySummary,
     RewardPolicyTier,
+    SendFriendRequestResult,
     StandingsReadOptions,
     StandingsSegment;
 
@@ -132,6 +144,7 @@ class Kraty {
   final InventoryClient inventory;
   final WalletClient wallet;
   final PlayersClient players;
+  final FriendsClient friends;
   final CatalogClient catalog;
 
   Kraty._({
@@ -144,6 +157,7 @@ class Kraty {
     required this.inventory,
     required this.wallet,
     required this.players,
+    required this.friends,
     required this.catalog,
   });
 
@@ -159,6 +173,7 @@ class Kraty {
       inventory: InventoryClient(c),
       wallet: WalletClient(c),
       players: PlayersClient(c),
+      friends: FriendsClient(c),
       catalog: CatalogClient(c),
     );
   }

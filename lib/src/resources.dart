@@ -959,6 +959,258 @@ class PlayersClient {
   }
 }
 
+/// Resource client for the player social graph, under
+/// `/sdk/v1/players/:externalId/...`: friend codes, requests, the
+/// friends list with live presence, username search, and blocking.
+///
+/// Every method is authorized by the active player's own secret, so a
+/// client can only ever act on ITS OWN social graph — friends are always
+/// scoped to the same game + environment. Pass `as:` on any method to
+/// address a different player (server-side tooling only).
+class FriendsClient {
+  final KratyClient _client;
+
+  FriendsClient(this._client);
+
+  /// `GET /sdk/v1/players/:externalId/friend-code`: the caller's short,
+  /// shareable friend code (6 chars, unambiguous alphabet), generated on
+  /// first use and stable forever after. Share it out-of-band so a friend
+  /// can [add] you without a username search.
+  Future<FriendCode> getCode({String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friend-code',
+    );
+    return _data<FriendCode>(env, (raw) {
+      if (raw is Map) return FriendCode.fromJson(raw.cast<String, Object?>());
+      return FriendCode.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `POST /sdk/v1/players/:externalId/presence`: refresh the caller's
+  /// online status. Call every ~30s while the player is active; presence
+  /// expires automatically when heartbeats stop. Optionally set a
+  /// free-form [status] label ("in_match", "lobby", …) that friends see.
+  ///
+  /// Mirrors the existing SDK idiom (see `players.setIdentity`'s `avatar`):
+  /// [status] is only sent when non-null, so a heartbeat without a status
+  /// leaves the current one untouched.
+  Future<PlayerPresence> heartbeat({String? status, String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/presence',
+      body: <String, Object?>{
+        if (status != null) 'status': status,
+      },
+    );
+    return _data<PlayerPresence>(env, (raw) {
+      if (raw is Map) return PlayerPresence.fromJson(raw.cast<String, Object?>());
+      return PlayerPresence.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `GET /sdk/v1/players/:externalId/friends`: the caller's accepted
+  /// friends, each enriched with display identity and live presence
+  /// (online / last-active / status).
+  Future<List<Friend>> list({String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friends',
+    );
+    return _data<List<Friend>>(env, (raw) {
+      if (raw is Map) {
+        final friends = raw['friends'];
+        if (friends is List) {
+          return friends
+              .whereType<Map<String, Object?>>()
+              .map((e) => Friend.fromJson(e.cast<String, Object?>()))
+              .toList(growable: false);
+        }
+      }
+      return const <Friend>[];
+    });
+  }
+
+  /// `GET /sdk/v1/players/:externalId/friends/search?q=`: find other
+  /// players by display name within the same game + environment. Each hit
+  /// reports the caller's [FriendSearchResult.relationship] to that player;
+  /// blocked players are omitted.
+  Future<List<FriendSearchResult>> search(
+    String query, {
+    int? limit,
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final qs = <String>['q=${_enc(query)}'];
+    if (limit != null) qs.add('limit=$limit');
+    final env = await _client.request(
+      method: 'GET',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/search?${qs.join('&')}',
+    );
+    return _data<List<FriendSearchResult>>(env, (raw) {
+      if (raw is Map) {
+        final results = raw['results'];
+        if (results is List) {
+          return results
+              .whereType<Map<String, Object?>>()
+              .map((e) => FriendSearchResult.fromJson(e.cast<String, Object?>()))
+              .toList(growable: false);
+        }
+      }
+      return const <FriendSearchResult>[];
+    });
+  }
+
+  /// `GET /sdk/v1/players/:externalId/friends/requests`: the caller's
+  /// pending incoming + outgoing friend requests.
+  Future<FriendRequests> listRequests({String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friends/requests',
+    );
+    return _data<FriendRequests>(env, (raw) {
+      if (raw is Map) return FriendRequests.fromJson(raw.cast<String, Object?>());
+      return FriendRequests.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `POST /sdk/v1/players/:externalId/friends/requests`: add another
+  /// player by [FriendTarget.byCode] or [FriendTarget.byExternalPlayerId]
+  /// (exactly one). Creates a pending request they must accept — unless
+  /// they had already requested the caller, in which case the friendship is
+  /// accepted immediately ([SendFriendRequestResult.status] == `accepted`).
+  ///
+  /// Throws [KratyApiError] on `player_blocked` (403), `already_friends`
+  /// (409), `cannot_friend_self` (400), or `friend_code_invalid` (404).
+  Future<SendFriendRequestResult> add(FriendTarget target, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friends/requests',
+      body: target.toJson(),
+    );
+    return _data<SendFriendRequestResult>(env, (raw) {
+      if (raw is Map) {
+        return SendFriendRequestResult.fromJson(raw.cast<String, Object?>());
+      }
+      return SendFriendRequestResult.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `POST /sdk/v1/players/:externalId/friends/requests/:id/accept`:
+  /// accept an incoming request, returning the new [Friend].
+  Future<Friend> accept(String requestId, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/requests/${_enc(requestId)}/accept',
+      body: const <String, Object?>{},
+    );
+    return _data<Friend>(env, (raw) {
+      final map =
+          raw is Map ? raw.cast<String, Object?>() : const <String, Object?>{};
+      final friend = map['friend'];
+      if (friend is Map) return Friend.fromJson(friend.cast<String, Object?>());
+      return Friend.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `POST /sdk/v1/players/:externalId/friends/requests/:id/decline`:
+  /// decline an incoming request.
+  Future<void> decline(String requestId, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    await _client.request(
+      method: 'POST',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/requests/${_enc(requestId)}/decline',
+      body: const <String, Object?>{},
+    );
+  }
+
+  /// `DELETE /sdk/v1/players/:externalId/friends/requests/:id`: cancel an
+  /// outgoing request the caller sent.
+  Future<void> cancelRequest(String requestId, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    await _client.request(
+      method: 'DELETE',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/requests/${_enc(requestId)}',
+    );
+  }
+
+  /// `DELETE /sdk/v1/players/:externalId/friends/:friendExternalId`:
+  /// remove an existing friend.
+  Future<void> remove(String friendExternalId, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    await _client.request(
+      method: 'DELETE',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/${_enc(friendExternalId)}',
+    );
+  }
+
+  /// `GET /sdk/v1/players/:externalId/blocks`: the players the caller has
+  /// blocked.
+  Future<List<BlockedPlayer>> listBlocks({String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/blocks',
+    );
+    return _data<List<BlockedPlayer>>(env, (raw) {
+      if (raw is Map) {
+        final blocked = raw['blocked'];
+        if (blocked is List) {
+          return blocked
+              .whereType<Map<String, Object?>>()
+              .map((e) => BlockedPlayer.fromJson(e.cast<String, Object?>()))
+              .toList(growable: false);
+        }
+      }
+      return const <BlockedPlayer>[];
+    });
+  }
+
+  /// `POST /sdk/v1/players/:externalId/blocks`: block a player by
+  /// [FriendTarget.byCode] or [FriendTarget.byExternalPlayerId]. Tears down
+  /// any friendship / pending request between the two and hides each from
+  /// the other's search + presence.
+  Future<BlockedPlayer> block(FriendTarget target, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/blocks',
+      body: target.toJson(),
+    );
+    return _data<BlockedPlayer>(env, (raw) {
+      final map =
+          raw is Map ? raw.cast<String, Object?>() : const <String, Object?>{};
+      final blocked = map['blocked'];
+      if (blocked is Map) {
+        return BlockedPlayer.fromJson(blocked.cast<String, Object?>());
+      }
+      return BlockedPlayer.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `DELETE /sdk/v1/players/:externalId/blocks/:blockedExternalId`:
+  /// unblock a player.
+  Future<void> unblock(String blockedExternalId, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    await _client.request(
+      method: 'DELETE',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/blocks/${_enc(blockedExternalId)}',
+    );
+  }
+}
+
 /// Resource client for `/sdk/v1/catalog`: single-shot read of every
 /// item + currency configured for the calling game. Studios call this
 /// once at boot and cache locally; pairs with `events.listForPlayer`
