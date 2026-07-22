@@ -8,7 +8,7 @@ import 'package:meta/meta.dart';
 import 'errors.dart';
 import 'finalization.dart';
 import 'secret_store.dart';
-import 'types.dart' show EventLeaderboard;
+import 'types.dart' show EventLeaderboard, ServerTime;
 
 /// SDK name + version, sent as `X-Kraty-SDK: <name>/<version>` on
 /// every request. Lets the backend tell which SDK + version sent a
@@ -167,6 +167,15 @@ class KratyClient {
   // Concurrent first-touch dedupe: two simultaneous player-scoped
   // calls share one register round-trip.
   Future<({String externalPlayerId, String secret})>? _identityInit;
+  // Long-lived MONOTONIC clock: a Stopwatch never runs backwards and is
+  // immune to device wall-clock changes, so it — not DateTime.now() — is
+  // what anchors the server clock in syncTime(). Started once at
+  // construction; read via elapsedMilliseconds.
+  final Stopwatch _monoClock = Stopwatch()..start();
+  // Server-clock anchor (see syncTime): the server epoch captured at sync +
+  // the monotonic reading at that same instant, so serverNow() keeps ticking
+  // correctly even if the player winds their device clock forward.
+  ({int serverMs, int monoMs})? _timeAnchor;
 
   KratyClient(KratyClientOptions options)
       : _baseUrl = _stripTrailingSlash(options.baseUrl),
@@ -203,7 +212,10 @@ class KratyClient {
     final ext = _activeExternalPlayerId;
     if (ext == null || ext.isEmpty) return null;
     try {
-      final qs = 'includeSelf=true&externalId=${Uri.encodeComponent(ext)}&limit=1';
+      // Pull the top rows (not just self) so a finalization can be rendered
+      // straight from the result — each row already carries server-resolved
+      // `avatar` + `isSelf`, so the app doesn't re-fetch or match ids.
+      final qs = 'includeSelf=true&externalId=${Uri.encodeComponent(ext)}&limit=50';
       final env = await request(
         method: 'GET',
         path: '/sdk/v1/event-leaderboards/${Uri.encodeComponent(leaderboardId)}?$qs',
@@ -211,12 +223,26 @@ class KratyClient {
       final data = env['data'];
       if (data is! Map) return null;
       final lb = EventLeaderboard.fromJson(data.cast<String, Object?>());
+      final standings = lb.entries
+          .map((e) => FinalStanding(
+                participantId: e.participantId,
+                rank: e.rank,
+                score: e.score,
+                name: e.name ?? '',
+                kind: e.kind == StandingKind.bot
+                    ? StandingKind.bot
+                    : StandingKind.player,
+                avatar: e.avatar,
+                isSelf: e.isSelf,
+              ))
+          .toList();
       return EventLeaderboardStatus(
         finalized: lb.finalized,
         reason: lb.finalizedReason,
         self: lb.self != null
             ? SelfEntry(rank: lb.self!.rank, score: lb.self!.score)
             : null,
+        standings: standings,
       );
     } catch (_) {
       return null; // unreadable → treat as still-active
@@ -383,6 +409,63 @@ class KratyClient {
   /// catch-up so the registry is updated (not just the callback). See docs/05b.
   Future<void> routeFinalized(String leaderboardId, Map<String, Object?>? data) =>
       _finalization.onStreamFinalized(leaderboardId, data);
+
+  // ── Server clock (anti-cheat timer) ──────────────────────────────
+  // A trustworthy time source: fetch the backend's clock so game timers
+  // (event countdowns, etc.) can't be cheated by winding the device clock
+  // forward. Always compare against `epochMs` / [serverNow], never the
+  // device's own `DateTime.now()`.
+
+  /// Fetch the server's current time in a single round-trip. [ServerTime.epochMs]
+  /// (UTC) is the value to compare against an event's `endsAt`.
+  ///
+  /// Pass [timezone] (an IANA name, e.g. `'Europe/Lisbon'`) to also receive
+  /// that zone's wall-clock (`local`) and `offsetMinutes` for display — an
+  /// invalid zone makes the server respond `400`. Comparisons should still
+  /// use `epochMs`.
+  Future<ServerTime> getServerTime({String? timezone}) async {
+    final qs = (timezone != null && timezone.isNotEmpty)
+        ? '?timezone=${Uri.encodeComponent(timezone)}'
+        : '';
+    final env = await request(method: 'GET', path: '/sdk/v1/time$qs');
+    final data = env['data'];
+    return ServerTime.fromJson(
+      data is Map ? data.cast<String, Object?>() : const <String, Object?>{},
+    );
+  }
+
+  /// Anchor a tamper-proof clock: fetch the server time once and pin it to
+  /// the long-lived MONOTONIC [Stopwatch], so [serverNow] / [serverNowMs]
+  /// keep advancing correctly even if the player changes their device clock
+  /// afterwards. Call at startup and again on app resume. Network latency
+  /// introduces at most a sub-second skew, negligible for event timers.
+  Future<void> syncTime() async {
+    final t = await getServerTime();
+    _timeAnchor = (serverMs: t.epochMs, monoMs: _monoClock.elapsedMilliseconds);
+  }
+
+  /// True once [syncTime] has succeeded at least once.
+  bool get isTimeSynced => _timeAnchor != null;
+
+  /// Current server time as Unix epoch ms (UTC), derived from the last
+  /// [syncTime] anchor plus monotonic elapsed time — safe against
+  /// device-clock tampering. Compare this against an event's `endsAt`.
+  ///
+  /// Throws a [StateError] if [syncTime] hasn't run yet.
+  int serverNowMs() {
+    final anchor = _timeAnchor;
+    if (anchor == null) {
+      throw StateError(
+        'kraty: call syncTime() before serverNow()/serverNowMs()',
+      );
+    }
+    return anchor.serverMs + (_monoClock.elapsedMilliseconds - anchor.monoMs);
+  }
+
+  /// [serverNowMs] as a UTC [DateTime]. Throws a [StateError] if [syncTime]
+  /// hasn't run yet.
+  DateTime serverNow() =>
+      DateTime.fromMillisecondsSinceEpoch(serverNowMs(), isUtc: true);
 
   /// Low-level: fire a JSON request. Resource clients call this;
   /// consumers usually go through the per-resource wrappers

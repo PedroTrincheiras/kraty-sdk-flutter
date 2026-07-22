@@ -1553,3 +1553,45 @@ class FriendTarget {
         if (externalPlayerId != null) 'externalPlayerId': externalPlayerId,
       };
 }
+
+/// The server's clock, returned by [KratyClient.getServerTime].
+///
+/// A trustworthy time source for game timers: because it comes from the
+/// backend rather than the device, event countdowns can't be cheated by a
+/// player winding their local clock forward. Compare [epochMs] against an
+/// event's `endsAt` to decide whether an attempt is still live.
+class ServerTime {
+  /// Unix epoch milliseconds (UTC). This is the value to compare against
+  /// event `endsAt`.
+  final int epochMs;
+
+  /// UTC ISO-8601 string.
+  final String iso;
+
+  /// The IANA timezone the [local] / [offsetMinutes] fields describe
+  /// (`UTC` unless a `timezone` was requested).
+  final String timezone;
+
+  /// [timezone]'s offset from UTC at this instant, in minutes.
+  final int offsetMinutes;
+
+  /// Wall-clock in [timezone], ISO-like without a zone
+  /// (`YYYY-MM-DDTHH:mm:ss`). Display only — always compare with [epochMs].
+  final String local;
+
+  const ServerTime({
+    required this.epochMs,
+    required this.iso,
+    required this.timezone,
+    required this.offsetMinutes,
+    required this.local,
+  });
+
+  factory ServerTime.fromJson(JsonMap json) => ServerTime(
+        epochMs: _readInt(json, 'epochMs'),
+        iso: _readString(json, 'iso'),
+        timezone: _readString(json, 'timezone'),
+        offsetMinutes: _readInt(json, 'offsetMinutes'),
+        local: _readString(json, 'local'),
+      );
+}

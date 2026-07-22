@@ -91,12 +91,14 @@ export 'src/types.dart' show
     RewardPolicySummary,
     RewardPolicyTier,
     SendFriendRequestResult,
+    ServerTime,
     StandingsReadOptions,
     StandingsSegment;
 
 import 'src/client.dart';
 import 'src/finalization.dart';
 import 'src/resources.dart';
+import 'src/types.dart' show ServerTime;
 
 export 'src/secret_store.dart' show
     DefaultSecretStore,
@@ -224,6 +226,29 @@ class Kraty {
 
   /// Bulk-drop every already-reported membership. Returns the count.
   Future<int> clearReported() => client.clearReported();
+
+  /// Server clock (anti-cheat timer). Fetch the backend's time so game timers
+  /// can't be cheated by winding the device clock forward. [getServerTime] is a
+  /// one-shot fetch; [syncTime] + [serverNow] give a tamper-proof local clock
+  /// anchored to the server via a monotonic reference (call [syncTime] at
+  /// startup and on app resume). Always compare [serverNow] / `epochMs` against
+  /// an event's `endsAt`, never the device's own `DateTime.now()`.
+  Future<ServerTime> getServerTime({String? timezone}) =>
+      client.getServerTime(timezone: timezone);
+
+  /// Anchor the tamper-proof clock. Call at startup and on app resume.
+  Future<void> syncTime() => client.syncTime();
+
+  /// True once [syncTime] has succeeded at least once.
+  bool get isTimeSynced => client.isTimeSynced;
+
+  /// Current server time as Unix epoch ms (UTC). Throws a [StateError] if
+  /// [syncTime] hasn't run yet.
+  int serverNowMs() => client.serverNowMs();
+
+  /// Current server time as a UTC [DateTime]. Throws a [StateError] if
+  /// [syncTime] hasn't run yet.
+  DateTime serverNow() => client.serverNow();
 
   /// Releases the underlying HTTP client.
   void close() => client.close();

@@ -10,7 +10,7 @@ description: |
   Embedding a server_integration key in a shipped game client is a
   security incident. Use the @kraty/server-sdk (Node) from your
   own backend instead.
-version: 0.17.0
+version: 0.18.0
 repository: https://github.com/kraty-team/kraty
 issue_tracker: https://github.com/kraty-team/kraty/issues
 

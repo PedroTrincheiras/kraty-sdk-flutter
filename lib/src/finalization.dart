@@ -152,12 +152,24 @@ class FinalStanding {
   /// One of the [StandingKind] constants.
   final String kind;
 
+  /// Avatar reference for this row, or null (bots / unset). Populated when the
+  /// standings came from a board read (the normal path); may be null on the
+  /// rare live-broadcast fallback.
+  final String? avatar;
+
+  /// True for the row belonging to the player who received this result — use it
+  /// to highlight "you" without matching ids yourself. Server-resolved on the
+  /// board read; false on the live-broadcast fallback.
+  final bool isSelf;
+
   const FinalStanding({
     required this.participantId,
     required this.rank,
     required this.score,
     required this.name,
     required this.kind,
+    this.avatar,
+    this.isSelf = false,
   });
 
   factory FinalStanding.fromJson(Map<String, Object?> json) => FinalStanding(
@@ -166,6 +178,10 @@ class FinalStanding {
         score: (json['score'] as num?)?.toDouble() ?? 0,
         name: json['name'] as String? ?? '',
         kind: json['kind'] as String? ?? StandingKind.player,
+        avatar: json['avatar'] as String?,
+        // `isSelf` defaults to false on older payloads and on the
+        // live-broadcast fallback (a missing key would otherwise throw).
+        isSelf: json['isSelf'] is bool ? json['isSelf'] as bool : false,
       );
 }
 
@@ -200,10 +216,16 @@ class EventLeaderboardStatus {
   final bool finalized;
   final String? reason;
   final SelfEntry? self;
+
+  /// The board's final rows (server-resolved: avatar + isSelf per row), so a
+  /// finalization can be rendered without a second fetch. Null if the read
+  /// couldn't return them.
+  final List<FinalStanding>? standings;
   const EventLeaderboardStatus({
     required this.finalized,
     this.reason,
     this.self,
+    this.standings,
   });
 }
 
@@ -399,21 +421,33 @@ class FinalizationTracker {
         ? reasonRaw as String
         : FinalizationReason.finalized;
     final ref = MembershipRef.eventLeaderboard(leaderboardId);
+    // Broadcast standings carried on the live frame (no per-viewer isSelf/self).
     final standingsRaw = data?['standings'];
+    final broadcastStandings = standingsRaw is List
+        ? standingsRaw
+            .map((e) => FinalStanding.fromJson((e as Map).cast<String, Object?>()))
+            .toList()
+        : null;
+    // The live `finalized` frame is a board-wide BROADCAST, so it can't carry
+    // this viewer's `self` or per-row `isSelf`. Enrich with one per-player board
+    // read so the result carries server-resolved standings (avatar + isSelf) and
+    // the caller's self entry. Falls back to the broadcast standings (no isSelf)
+    // if the read is unavailable — delivery still happens either way.
+    EventLeaderboardStatus? read;
+    try {
+      read = await _readEventLeaderboard(leaderboardId);
+    } catch (_) {
+      read = null;
+    }
+    final standings = read?.standings ?? broadcastStandings;
     await _resolveFinalized(
       playerId,
       ref,
       FinalizationResult(
         ref: ref,
-        reason: reason,
-        // The self entry isn't in the stream payload; match self in
-        // `standings` by participantId.
-        self: null,
-        standings: standingsRaw is List
-            ? standingsRaw
-                .map((e) => FinalStanding.fromJson((e as Map).cast<String, Object?>()))
-                .toList()
-            : null,
+        reason: reason, // keep the precise SSE reason over the read's
+        self: read?.self,
+        standings: standings,
       ),
     );
   }
@@ -443,6 +477,7 @@ class FinalizationTracker {
         // fallback if the backend didn't supply a reason.
         reason: read.reason ?? FinalizationReason.finalized,
         self: read.self,
+        standings: read.standings,
         eventKey: e.ref.eventKey,
       );
       if (await _resolveFinalized(playerId, e.ref, result)) out.add(result);
