@@ -401,7 +401,23 @@ class FinalizationTracker {
       entries[idx].status = MembershipStatus.finalized;
       entries[idx].reportedAt = DateTime.now().toUtc().toIso8601String();
       await _store.save(playerId, entries); // persist BEFORE firing
-      _emit(result);
+      // Carry the TRACKED ref (with the eventKey captured at start()) onto the
+      // result. The live SSE path builds a bare ref (leaderboardId only) and
+      // omits eventKey, so a stream-delivered result would otherwise have
+      // eventKey == null and a caller routing on it couldn't. Fields are final,
+      // so rebuild with the tracked ref + eventKey when the incoming result
+      // lacks it; catch-up already sets it (this makes both paths consistent).
+      final tracked = entries[idx].ref;
+      final emitted = (result.eventKey == null && tracked.eventKey != null)
+          ? FinalizationResult(
+              ref: tracked,
+              reason: result.reason,
+              self: result.self,
+              standings: result.standings,
+              eventKey: tracked.eventKey,
+            )
+          : result;
+      _emit(emitted);
       return true;
     });
   }
