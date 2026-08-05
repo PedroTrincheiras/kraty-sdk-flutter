@@ -557,6 +557,41 @@ class LeaderboardSelf {
       );
 }
 
+/// One side of a promotion/relegation ladder: the [places] positions that
+/// move (from the top for promotion, the bottom for relegation) and the
+/// progression [itemKey] they nudge.
+class ProgressionBand {
+  final int places;
+  final String itemKey;
+
+  const ProgressionBand({required this.places, required this.itemKey});
+
+  factory ProgressionBand.fromJson(JsonMap json) => ProgressionBand(
+        places: _readInt(json, 'places'),
+        itemKey: _readString(json, 'itemKey'),
+      );
+}
+
+/// Promotion / relegation limits for the caller's division, resolved from
+/// server config (a per-division override wins over the global ladder). Render
+/// "top N promote / bottom N relegate" from this instead of hardcoding the
+/// cutoffs. Each side is `null` when no ladder runs on that end.
+class ProgressionLimits {
+  final ProgressionBand? promotion;
+  final ProgressionBand? relegation;
+
+  const ProgressionLimits({this.promotion, this.relegation});
+
+  factory ProgressionLimits.fromJson(JsonMap json) => ProgressionLimits(
+        promotion: json['promotion'] is Map
+            ? ProgressionBand.fromJson(json['promotion']! as JsonMap)
+            : null,
+        relegation: json['relegation'] is Map
+            ? ProgressionBand.fromJson(json['relegation']! as JsonMap)
+            : null,
+      );
+}
+
 /// The auto-generated per-event-window leaderboard, addressed by the
 /// UUID returned in `events.start(...)`'s `attempt.leaderboardId`. For
 /// the dashboard-configured cross-event boards, see [Leaderboard].
@@ -573,6 +608,10 @@ class EventLeaderboard {
   final List<LeaderboardEntry> entries;
   final LeaderboardSelf? self;
 
+  /// Promotion/relegation cutoffs for this division, from server config;
+  /// `null` when the event runs no ladder.
+  final ProgressionLimits? progression;
+
   /// `true` on the response to `join(...)`; `null` on plain reads
   /// (the server omits the field outside a join).
   final bool? joined;
@@ -584,6 +623,7 @@ class EventLeaderboard {
     this.finalizedReason,
     required this.entries,
     required this.self,
+    this.progression,
     this.joined,
   });
 
@@ -597,6 +637,9 @@ class EventLeaderboard {
             .toList(),
         self: json['self'] is Map
             ? LeaderboardSelf.fromJson(json['self']! as JsonMap)
+            : null,
+        progression: json['progression'] is Map
+            ? ProgressionLimits.fromJson(json['progression']! as JsonMap)
             : null,
         joined: json['joined'] is bool ? json['joined']! as bool : null,
       );
@@ -626,6 +669,10 @@ class Leaderboard {
   final List<LeaderboardEntry> entries;
   final LeaderboardSelf? self;
 
+  /// Promotion/relegation cutoffs for this division, from server config;
+  /// `null` when the board runs no ladder.
+  final ProgressionLimits? progression;
+
   /// `true` on the response to `join(...)`; `null` on plain reads
   /// (the server omits the field outside a join).
   final bool? joined;
@@ -640,6 +687,7 @@ class Leaderboard {
     required this.period,
     required this.entries,
     required this.self,
+    this.progression,
     this.joined,
   });
 
@@ -656,6 +704,9 @@ class Leaderboard {
             .toList(),
         self: json['self'] is Map
             ? LeaderboardSelf.fromJson(json['self']! as JsonMap)
+            : null,
+        progression: json['progression'] is Map
+            ? ProgressionLimits.fromJson(json['progression']! as JsonMap)
             : null,
         joined: json['joined'] is bool ? json['joined']! as bool : null,
       );
@@ -856,6 +907,51 @@ class OpenCrateResponse {
         crate: Grant.fromJson(json['crate'] as JsonMap),
         contents: Grant.fromJson(json['contents'] as JsonMap),
       );
+}
+
+/// One line of a client-initiated grant (see [GrantsClient.grant]). Build one
+/// with [GrantEntryInput.currency], [GrantEntryInput.item], or
+/// [GrantEntryInput.crate].
+class GrantEntryInput {
+  /// `'currency'`, `'item'`, or `'crate'`.
+  final String type;
+  final String? currencyKey;
+  final num? amount;
+  final String? itemKey;
+  final int? quantity;
+  final String? crateItemKey;
+  final Map<String, Object?>? parameters;
+
+  const GrantEntryInput({
+    required this.type,
+    this.currencyKey,
+    this.amount,
+    this.itemKey,
+    this.quantity,
+    this.crateItemKey,
+    this.parameters,
+  });
+
+  factory GrantEntryInput.currency(String currencyKey, num amount) =>
+      GrantEntryInput(type: 'currency', currencyKey: currencyKey, amount: amount);
+
+  factory GrantEntryInput.item(String itemKey, int quantity,
+          {Map<String, Object?>? parameters}) =>
+      GrantEntryInput(
+          type: 'item', itemKey: itemKey, quantity: quantity, parameters: parameters);
+
+  factory GrantEntryInput.crate(String crateItemKey, int quantity) =>
+      GrantEntryInput(type: 'crate', crateItemKey: crateItemKey, quantity: quantity);
+
+  JsonMap toJson() => {
+        'type': type,
+        if (currencyKey != null) 'currencyKey': currencyKey,
+        if (amount != null) 'amount': amount,
+        if (itemKey != null) 'itemKey': itemKey,
+        if (quantity != null) 'quantity': quantity,
+        if (crateItemKey != null) 'crateItemKey': crateItemKey,
+        if (parameters != null) 'parameters': parameters,
+      };
 }
 
 /// One milestone that fired during a single `progress()` call. The

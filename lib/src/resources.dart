@@ -595,6 +595,37 @@ class GrantsClient {
     });
   }
 
+  /// Grant items / currency / a crate to the ACTIVE player (self-only — the
+  /// player secret means you can only grant to yourself, never another
+  /// player). Requires the game's inventory management to be `permissive`,
+  /// else the server returns 403 `inventory_not_permissive`. The grant
+  /// auto-deposits into the player's holdings.
+  Future<Grant> grant(
+    List<GrantEntryInput> entries, {
+    String? kind,
+    String? expiresAt,
+    Map<String, Object?>? metadata,
+    String? idempotencyKey,
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/grants',
+      body: <String, Object?>{
+        'entries': entries.map((e) => e.toJson()).toList(),
+        if (kind != null) 'kind': kind,
+        if (expiresAt != null) 'expiresAt': expiresAt,
+        if (metadata != null) 'metadata': metadata,
+        if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+      },
+    );
+    return _data<Grant>(env, (raw) {
+      if (raw is Map) return Grant.fromJson(raw.cast<String, Object?>());
+      return Grant.fromJson(const <String, Object?>{});
+    });
+  }
+
   /// Flip a pending grant to claimed for the active player.
   /// Idempotent: claiming an already-claimed grant returns the same
   /// row.

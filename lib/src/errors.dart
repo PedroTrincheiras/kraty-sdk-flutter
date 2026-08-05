@@ -40,6 +40,9 @@ abstract class KratyErrorCode {
 
   // ── matchmaking ──────────────────────────────────────────────────
   static const String lobbyForming = 'lobby_forming';
+
+  // ── inventory ────────────────────────────────────────────────────
+  static const String inventoryNotPermissive = 'inventory_not_permissive';
 }
 
 /// Backend error envelope: every non-2xx response (and the special
@@ -205,6 +208,12 @@ class KratyApiError implements Exception {
   /// `details['lobbyId']`) and retry `events.start` once it
   /// transitions out of `forming`.
   bool get isLobbyForming => code == KratyErrorCode.lobbyForming;
+
+  /// 403: a client-side `grants.grant` on a game whose inventory management
+  /// isn't `permissive`. Enable it in the game's Settings, or grant from your
+  /// backend with a `server_integration` key.
+  bool get isInventoryNotPermissive =>
+      code == KratyErrorCode.inventoryNotPermissive;
 
   @override
   String toString() => 'KratyApiError [$status] $code: $message';
