@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'client.dart';
 import 'finalization.dart';
+import 'inventory_stream.dart';
 import 'leaderboard_stream.dart';
 import 'types.dart';
 
@@ -780,6 +781,70 @@ class InventoryClient {
       return ConsumeItemResult.fromJson(const <String, Object?>{});
     });
   }
+
+  /// `GET /sdk/v1/players/:p/inventory/stream`: live subscription to
+  /// everything that touches this player's items, wallet, and grants —
+  /// whoever caused it. A reward granted from the dashboard, a currency
+  /// credited by the studio's backend, an event payout, and the client's
+  /// own consume all arrive here.
+  ///
+  /// Returns the raw handle; iterate `events` and call `cancel()` when
+  /// done. See [watch] for the callback form.
+  ///
+  /// Does NOT auto-reconnect: listen on the returned stream's `errors`
+  /// and re-call after a backoff if you need resumption. Treat each event
+  /// as "something changed, re-read this"; the REST reads stay
+  /// authoritative.
+  Future<InventoryStream> live({String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    return openInventoryStream(
+      baseUrl: _client.baseUrlForStreaming,
+      externalPlayerId: externalPlayerId,
+      authHeader: _client.authHeaderForStreaming,
+      httpClient: _client.httpForStreaming,
+      playerSecret: _client.playerSecretForStreaming,
+      sdkUserAgent: _client.sdkUserAgentForStreaming,
+    );
+  }
+
+  /// Callback form of [live]: the one-liner most games want.
+  ///
+  /// ```dart
+  /// final stop = await kraty.inventory.watch(
+  ///   (ev) {
+  ///     if (ev.kind == 'inventory_changed') refreshBackpack();
+  ///     if (ev.kind == 'grant_created') showRewardPopup(ev.data);
+  ///   },
+  ///   ignoreOwnWrites: true,
+  /// );
+  /// // later
+  /// await stop();
+  /// ```
+  ///
+  /// [ignoreOwnWrites] skips events the client itself caused, so a
+  /// `consume` doesn't bounce back as a refresh. [onError] receives
+  /// transport failures. Returns a stop function; calling it more than
+  /// once is safe.
+  Future<Future<void> Function()> watch(
+    void Function(InventoryStreamEvent event) handler, {
+    bool ignoreOwnWrites = false,
+    void Function(Object error)? onError,
+    String? as,
+  }) async {
+    final stream = await live(as: as);
+    stream.events.listen(
+      (ev) {
+        if (ignoreOwnWrites && ev.isOwnWrite) return;
+        handler(ev);
+      },
+      onError: (Object err) => onError?.call(err),
+      cancelOnError: false,
+    );
+    if (onError != null) {
+      stream.errors.listen(onError);
+    }
+    return stream.cancel;
+  }
 }
 
 /// Resource client for `/sdk/v1/players/:p/wallet(/...)`. Mirrors
@@ -834,6 +899,40 @@ class WalletClient {
         return DebitWalletResult.fromJson(raw.cast<String, Object?>());
       }
       return DebitWalletResult.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `POST /sdk/v1/players/:p/wallet/:economyKey/progress`: push progress
+  /// into a **progression** resource straight from the game client — XP
+  /// from a finished run, distance travelled, stars collected — with no
+  /// studio backend in the loop.
+  ///
+  /// The resource must be `kind: progression` AND flagged
+  /// **client-writable** in the dashboard; otherwise this fails 403.
+  /// Spendable currencies are never client-writable.
+  ///
+  /// Anything DERIVED from the resource moves with it in the same
+  /// transaction, and each level crossed pays its configured reward, so
+  /// [ProgressWalletResult.derived] can carry a `level` jump plus the grant
+  /// ids to claim — enough to render "Level 5!" and a reward popup without
+  /// a second request.
+  Future<ProgressWalletResult> progress(
+    String economyKey,
+    ProgressWalletInput input, {
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/wallet/${_enc(economyKey)}/progress',
+      body: input.toJson(),
+    );
+    return _data<ProgressWalletResult>(env, (raw) {
+      if (raw is Map) {
+        return ProgressWalletResult.fromJson(raw.cast<String, Object?>());
+      }
+      return ProgressWalletResult.fromJson(const <String, Object?>{});
     });
   }
 }
@@ -998,6 +1097,14 @@ class PlayersClient {
 /// client can only ever act on ITS OWN social graph — friends are always
 /// scoped to the same game + environment. Pass `as:` on any method to
 /// address a different player (server-side tooling only).
+/// Builds the `?progression=level,trophies` query for the social-graph
+/// reads. Opt-in and explicit, because "the level" is a different economy
+/// key in every game; nothing extra is read server-side when omitted.
+String _progressionQuery(List<String>? keys) {
+  if (keys == null || keys.isEmpty) return '';
+  return '?progression=${_enc(keys.join(','))}';
+}
+
 class FriendsClient {
   final KratyClient _client;
 
@@ -1007,11 +1114,16 @@ class FriendsClient {
   /// shareable friend code (6 chars, unambiguous alphabet), generated on
   /// first use and stable forever after. Share it out-of-band so a friend
   /// can [add] you without a username search.
-  Future<FriendCode> getCode({String? as}) async {
+  ///
+  /// Pass [progression] to also get the caller's OWN balances of those
+  /// progression items (e.g. `['level']`), so a profile card can render the
+  /// code and the level from one request.
+  Future<FriendCode> getCode({List<String>? progression, String? as}) async {
     final externalPlayerId = await _resolvePlayerId(_client, as);
     final env = await _client.request(
       method: 'GET',
-      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friend-code',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friend-code${_progressionQuery(progression)}',
     );
     return _data<FriendCode>(env, (raw) {
       if (raw is Map) return FriendCode.fromJson(raw.cast<String, Object?>());
@@ -1045,11 +1157,17 @@ class FriendsClient {
   /// `GET /sdk/v1/players/:externalId/friends`: the caller's accepted
   /// friends, each enriched with display identity and live presence
   /// (online / last-active / status).
-  Future<List<Friend>> list({String? as}) async {
+  ///
+  /// Pass [progression] with the economy keys your game uses (e.g.
+  /// `['level']`) and each friend comes back with those balances in the
+  /// same round-trip — enough to render "Lv 12 ShadowStrike" without a
+  /// request per friend. A resource a friend never earned reads `0`.
+  Future<List<Friend>> list({List<String>? progression, String? as}) async {
     final externalPlayerId = await _resolvePlayerId(_client, as);
     final env = await _client.request(
       method: 'GET',
-      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friends',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends${_progressionQuery(progression)}',
     );
     return _data<List<Friend>>(env, (raw) {
       if (raw is Map) {
@@ -1072,11 +1190,15 @@ class FriendsClient {
   Future<List<FriendSearchResult>> search(
     String query, {
     int? limit,
+    List<String>? progression,
     String? as,
   }) async {
     final externalPlayerId = await _resolvePlayerId(_client, as);
     final qs = <String>['q=${_enc(query)}'];
     if (limit != null) qs.add('limit=$limit');
+    if (progression != null && progression.isNotEmpty) {
+      qs.add('progression=${_enc(progression.join(','))}');
+    }
     final env = await _client.request(
       method: 'GET',
       path:
@@ -1098,11 +1220,17 @@ class FriendsClient {
 
   /// `GET /sdk/v1/players/:externalId/friends/requests`: the caller's
   /// pending incoming + outgoing friend requests.
-  Future<FriendRequests> listRequests({String? as}) async {
+  ///
+  /// Pass [progression] to attach each player's progression balances.
+  Future<FriendRequests> listRequests({
+    List<String>? progression,
+    String? as,
+  }) async {
     final externalPlayerId = await _resolvePlayerId(_client, as);
     final env = await _client.request(
       method: 'GET',
-      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friends/requests',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/requests${_progressionQuery(progression)}',
     );
     return _data<FriendRequests>(env, (raw) {
       if (raw is Map) return FriendRequests.fromJson(raw.cast<String, Object?>());

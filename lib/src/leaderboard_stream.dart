@@ -1,9 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import 'errors.dart';
+import 'sse.dart';
 
 /// One event emitted by the leaderboard SSE stream.
 /// [kind] is the SSE `event:` line. Typically:
@@ -56,10 +55,8 @@ class LeaderboardStream {
 /// streams. Does NOT auto-reconnect; wrap it yourself when the
 /// underlying transport drops.
 ///
-/// Implementation: opens a long-lived `http.Request` (NOT a
-/// `http.Client.get`) and parses the SSE framing line by line.
-/// `\n\n` separates events; `event:` / `data:` are the keys we read.
-/// Comment lines starting with `:` are heartbeats, so they're ignored.
+/// The SSE framing itself is parsed by the shared reader in `sse.dart`;
+/// this only maps the generic events onto the leaderboard-shaped type.
 Future<LeaderboardStream> openLeaderboardStream({
   required String baseUrl,
   required String leaderboardId,
@@ -68,123 +65,20 @@ Future<LeaderboardStream> openLeaderboardStream({
   required String sdkUserAgent,
   String? playerSecret,
 }) async {
-  final req = http.Request(
-    'GET',
-    Uri.parse('$baseUrl/sdk/v1/event-leaderboards/$leaderboardId/stream'),
+  final raw = await openSseStream(
+    baseUrl: baseUrl,
+    path: '/sdk/v1/event-leaderboards/$leaderboardId/stream',
+    authHeader: authHeader,
+    httpClient: httpClient,
+    sdkUserAgent: sdkUserAgent,
+    label: 'leaderboard stream',
+    playerSecret: playerSecret,
   );
-  req.headers['authorization'] = authHeader;
-  req.headers['accept'] = 'text/event-stream';
-  req.headers['x-kraty-sdk'] = sdkUserAgent;
-  if (playerSecret != null && playerSecret.isNotEmpty) {
-    req.headers['x-player-secret'] = playerSecret;
-  }
-
-  late http.StreamedResponse response;
-  try {
-    response = await httpClient.send(req);
-  } catch (err) {
-    throw KratyNetworkError('leaderboard stream connect failed: $err', err);
-  }
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    // Drain the body so the connection doesn't dangle, then surface
-    // the error in the same shape the rest of the SDK uses.
-    final bodyText = await response.stream.transform(utf8.decoder).join();
-    Map<String, Object?> errBody = const <String, Object?>{};
-    try {
-      final decoded = jsonDecode(bodyText);
-      if (decoded is Map) {
-        final inner = decoded['error'];
-        if (inner is Map) {
-          errBody = inner.cast<String, Object?>();
-        }
-      }
-    } catch (_) {
-      // Body wasn't JSON, so fall back to the status code as message.
-    }
-    throw KratyApiError(
-      status: response.statusCode,
-      code: (errBody['code'] as String?) ??
-          'http_${response.statusCode}',
-      message: (errBody['message'] as String?) ?? bodyText,
-      details: errBody['details'],
-    );
-  }
-
-  final eventsCtrl = StreamController<LeaderboardStreamEvent>();
-  final errorsCtrl = StreamController<Object>.broadcast();
-  StreamSubscription<String>? lineSub;
-  String currentEvent = 'message';
-  final dataBuffer = StringBuffer();
-
-  void emit() {
-    if (dataBuffer.isEmpty) {
-      currentEvent = 'message';
-      return;
-    }
-    try {
-      final parsed = jsonDecode(dataBuffer.toString());
-      final asMap = parsed is Map
-          ? parsed.cast<String, Object?>()
-          : <String, Object?>{'value': parsed};
-      eventsCtrl.add(LeaderboardStreamEvent(kind: currentEvent, data: asMap));
-    } catch (err) {
-      errorsCtrl.add(err);
-    }
-    dataBuffer.clear();
-    currentEvent = 'message';
-  }
-
-  lineSub = response.stream
-      .transform(utf8.decoder)
-      .transform(const LineSplitter())
-      .listen(
-    (line) {
-      if (line.isEmpty) {
-        // Blank line terminates an event.
-        emit();
-        return;
-      }
-      if (line.startsWith(':')) {
-        // Comment / heartbeat: ignore.
-        return;
-      }
-      final colonIdx = line.indexOf(':');
-      if (colonIdx < 0) return;
-      final field = line.substring(0, colonIdx);
-      // Spec: a single leading space in the value is optional and
-      // should be stripped.
-      var value = line.substring(colonIdx + 1);
-      if (value.startsWith(' ')) value = value.substring(1);
-      switch (field) {
-        case 'event':
-          currentEvent = value;
-          break;
-        case 'data':
-          if (dataBuffer.isNotEmpty) dataBuffer.write('\n');
-          dataBuffer.write(value);
-          break;
-        // SSE also defines `id` and `retry`, which we don't use.
-        default:
-          break;
-      }
-    },
-    onError: (Object err) {
-      errorsCtrl.add(err);
-    },
-    onDone: () {
-      // Surface anything still buffered as a final event, then close.
-      emit();
-      if (!eventsCtrl.isClosed) eventsCtrl.close();
-      if (!errorsCtrl.isClosed) errorsCtrl.close();
-    },
-    cancelOnError: false,
+  return LeaderboardStream._(
+    raw.events.map(
+      (e) => LeaderboardStreamEvent(kind: e.kind, data: e.data),
+    ),
+    raw.errors,
+    raw.cancel,
   );
-
-  Future<void> cancel() async {
-    await lineSub?.cancel();
-    if (!eventsCtrl.isClosed) await eventsCtrl.close();
-    if (!errorsCtrl.isClosed) await errorsCtrl.close();
-  }
-
-  return LeaderboardStream._(eventsCtrl.stream, errorsCtrl.stream, cancel);
 }

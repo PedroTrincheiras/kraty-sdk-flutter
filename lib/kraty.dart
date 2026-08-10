@@ -25,6 +25,9 @@ export 'src/errors.dart' show
     KratyNetworkError,
     KratyApiErrorIs;
 export 'src/leaderboard_stream.dart' show LeaderboardStream, LeaderboardStreamEvent;
+export 'src/inventory_stream.dart'
+    show InventoryStream, InventoryStreamEvent, InventoryEventOrigin;
+export 'src/sse.dart' show SseEvent, SseStream, openSseStream;
 export 'src/resources.dart' show
     CatalogClient,
     CollectAllFailure,

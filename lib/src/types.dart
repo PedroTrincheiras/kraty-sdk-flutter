@@ -22,6 +22,27 @@ double _readDouble(JsonMap json, String key) {
   return 0;
 }
 
+/// Reads a `{ "level": 12 }` progression snapshot off a social-graph row.
+///
+/// Absent (the caller didn't ask for any) reads as `null`, which is
+/// meaningfully different from an empty map: `null` means "not requested",
+/// `{}` means "requested, none defined". Non-integer values are skipped
+/// rather than throwing, so a future server-side widening can't break an
+/// older client.
+Map<String, int>? _readProgression(JsonMap json, String key) {
+  final raw = json[key];
+  if (raw is! Map) return null;
+  final out = <String, int>{};
+  raw.forEach((k, v) {
+    if (v is int) {
+      out['$k'] = v;
+    } else if (v is num) {
+      out['$k'] = v.toInt();
+    }
+  });
+  return out;
+}
+
 int _readInt(JsonMap json, String key) {
   final v = json[key];
   if (v is int) return v;
@@ -1246,6 +1267,89 @@ class DebitWalletResult {
       );
 }
 
+/// Input for `wallet.progress()`. [amount] is SIGNED: positive advances,
+/// negative rolls back (the balance never goes below zero).
+class ProgressWalletInput {
+  final int amount;
+  final String? reason;
+  final String? idempotencyKey;
+
+  const ProgressWalletInput({
+    required this.amount,
+    this.reason,
+    this.idempotencyKey,
+  });
+
+  JsonMap toJson() => <String, Object?>{
+        'amount': amount,
+        if (reason != null) 'reason': reason,
+        if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+      };
+}
+
+/// A progression item the platform recomputed as a consequence of a
+/// `wallet.progress()` call — typically the player's `level` following
+/// their `xp`. [grantIds] are the per-level rewards that fired; claim them
+/// with `grants.collectAll()`.
+class DerivedProgressionChange {
+  final String economyKey;
+  final int previous;
+  final int current;
+  final int delta;
+  final List<String> grantIds;
+
+  const DerivedProgressionChange({
+    required this.economyKey,
+    required this.previous,
+    required this.current,
+    required this.delta,
+    required this.grantIds,
+  });
+
+  factory DerivedProgressionChange.fromJson(JsonMap json) =>
+      DerivedProgressionChange(
+        economyKey: _readString(json, 'economyKey'),
+        previous: _readInt(json, 'previous'),
+        current: _readInt(json, 'current'),
+        delta: _readInt(json, 'delta'),
+        grantIds: (json['grantIds'] is List)
+            ? (json['grantIds']! as List)
+                .whereType<String>()
+                .toList(growable: false)
+            : const <String>[],
+      );
+}
+
+class ProgressWalletResult {
+  final String economyKey;
+  final int balance;
+  final bool applied;
+
+  /// Empty unless another progression item is configured to derive from
+  /// this one.
+  final List<DerivedProgressionChange> derived;
+
+  const ProgressWalletResult({
+    required this.economyKey,
+    required this.balance,
+    required this.applied,
+    required this.derived,
+  });
+
+  factory ProgressWalletResult.fromJson(JsonMap json) => ProgressWalletResult(
+        economyKey: _readString(json, 'economyKey'),
+        balance: _readInt(json, 'balance'),
+        applied: _readBool(json, 'applied'),
+        derived: (json['derived'] is List)
+            ? (json['derived']! as List)
+                .whereType<Map<String, Object?>>()
+                .map((e) =>
+                    DerivedProgressionChange.fromJson(e.cast<String, Object?>()))
+                .toList(growable: false)
+            : const <DerivedProgressionChange>[],
+      );
+}
+
 /// Result of `players.register()`. The plaintext [secret] is only
 /// ever surfaced HERE, so store it locally on the device immediately
 /// (e.g. shared_preferences in Flutter). The next call to
@@ -1434,6 +1538,11 @@ class Friend {
   /// Free-form client-set status ("in_match", "lobby", …), or `null`.
   final String? status;
 
+  /// Progression balances requested via `friends.list(progression: [...])`,
+  /// e.g. `{ 'level': 12 }`. `null` when none were asked for; a resource
+  /// the friend never earned reads `0`.
+  final Map<String, int>? progression;
+
   const Friend({
     required this.externalPlayerId,
     required this.displayIdentity,
@@ -1441,6 +1550,7 @@ class Friend {
     required this.online,
     required this.lastActiveAt,
     required this.status,
+    this.progression,
   });
 
   factory Friend.fromJson(JsonMap json) => Friend(
@@ -1450,6 +1560,7 @@ class Friend {
         online: _readBool(json, 'online'),
         lastActiveAt: _readNullableString(json, 'lastActiveAt'),
         status: _readNullableString(json, 'status'),
+        progression: _readProgression(json, 'progression'),
       );
 }
 
@@ -1458,11 +1569,21 @@ class FriendCode {
   final String friendCode;
   final PlayerIdentity? displayIdentity;
 
-  const FriendCode({required this.friendCode, required this.displayIdentity});
+  /// The caller's OWN progression balances, when requested via
+  /// `friends.getCode(progression: [...])`. Handy for a profile card that
+  /// shows the shareable code and the player's level together.
+  final Map<String, int>? progression;
+
+  const FriendCode({
+    required this.friendCode,
+    required this.displayIdentity,
+    this.progression,
+  });
 
   factory FriendCode.fromJson(JsonMap json) => FriendCode(
         friendCode: _readString(json, 'friendCode'),
         displayIdentity: _readIdentity(json, 'displayIdentity'),
+        progression: _readProgression(json, 'progression'),
       );
 }
 
@@ -1492,14 +1613,20 @@ class FriendRequestPlayer {
   final String externalPlayerId;
   final PlayerIdentity? displayIdentity;
 
+  /// Progression balances requested via
+  /// `friends.listRequests(progression: [...])`.
+  final Map<String, int>? progression;
+
   const FriendRequestPlayer({
     required this.externalPlayerId,
     required this.displayIdentity,
+    this.progression,
   });
 
   factory FriendRequestPlayer.fromJson(JsonMap json) => FriendRequestPlayer(
         externalPlayerId: _readString(json, 'externalPlayerId'),
         displayIdentity: _readIdentity(json, 'displayIdentity'),
+        progression: _readProgression(json, 'progression'),
       );
 }
 
@@ -1558,10 +1685,14 @@ class FriendSearchResult {
   /// One of `none`, `friends`, `request_incoming`, `request_outgoing`.
   final String relationship;
 
+  /// Progression balances requested via `friends.search(progression: [...])`.
+  final Map<String, int>? progression;
+
   const FriendSearchResult({
     required this.externalPlayerId,
     required this.displayIdentity,
     required this.relationship,
+    this.progression,
   });
 
   factory FriendSearchResult.fromJson(JsonMap json) => FriendSearchResult(
@@ -1570,6 +1701,7 @@ class FriendSearchResult {
         relationship: _readString(json, 'relationship').isEmpty
             ? 'none'
             : _readString(json, 'relationship'),
+        progression: _readProgression(json, 'progression'),
       );
 }
 
