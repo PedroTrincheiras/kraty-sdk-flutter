@@ -536,6 +536,11 @@ class LeaderboardEntry {
   /// bot entries regardless.
   final bool isSelf;
 
+  /// Per-player progression balances requested via `progression: ['level']`
+  /// on the read, e.g. `{ 'level': 12 }`. `null` when none were requested;
+  /// a resource the player never earned reads `0`. Never set on bot rows.
+  final Map<String, int>? progression;
+
   const LeaderboardEntry({
     required this.participantId,
     required this.kind,
@@ -547,6 +552,7 @@ class LeaderboardEntry {
     required this.score,
     required this.rank,
     required this.isSelf,
+    this.progression,
   });
 
   factory LeaderboardEntry.fromJson(JsonMap json) => LeaderboardEntry(
@@ -563,6 +569,7 @@ class LeaderboardEntry {
         // false anyway, and a missing key here would throw, so default
         // to `false` when absent to keep older payloads parseable.
         isSelf: json['isSelf'] is bool ? json['isSelf'] as bool : false,
+        progression: _readProgression(json, 'progression'),
       );
 }
 
@@ -1448,12 +1455,17 @@ class LeaderboardReadOptions {
   /// Required when [includeSelf] is true.
   final String? externalId;
 
+  /// Progression economy keys to attach to each player entry (max 8),
+  /// e.g. `['level']`. Omit and nothing extra is read server-side.
+  final List<String>? progression;
+
   const LeaderboardReadOptions({
     this.limit,
     this.segment,
     this.period,
     this.includeSelf = false,
     this.externalId,
+    this.progression,
   });
 }
 
@@ -1484,6 +1496,10 @@ class StandingsReadOptions {
   /// Cap on returned segment blocks (1–100, default 20 server-side).
   final int? maxSegments;
 
+  /// Progression economy keys to attach to each player entry (max 8),
+  /// e.g. `['level']`. Omit and nothing extra is read server-side.
+  final List<String>? progression;
+
   const StandingsReadOptions({
     this.scope,
     this.segment,
@@ -1491,6 +1507,7 @@ class StandingsReadOptions {
     this.externalId,
     this.limit,
     this.maxSegments,
+    this.progression,
   });
 }
 
@@ -1505,10 +1522,15 @@ class EventLeaderboardReadOptions {
   /// Required when [includeSelf] is true.
   final String? externalId;
 
+  /// Progression economy keys to attach to each player entry (max 8),
+  /// e.g. `['level']`. Omit and nothing extra is read server-side.
+  final List<String>? progression;
+
   const EventLeaderboardReadOptions({
     this.limit,
     this.includeSelf = false,
     this.externalId,
+    this.progression,
   });
 }
 

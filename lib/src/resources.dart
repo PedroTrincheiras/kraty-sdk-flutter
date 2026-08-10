@@ -172,6 +172,9 @@ class LeaderboardsClient {
     final opts = options ?? const LeaderboardReadOptions();
     final qs = <String>[];
     if (opts.limit != null) qs.add('limit=${opts.limit}');
+    if (opts.progression != null && opts.progression!.isNotEmpty) {
+      qs.add('progression=${_enc(opts.progression!.join(','))}');
+    }
     if (opts.segment != null && opts.segment!.isNotEmpty) {
       qs.add('segment=${_enc(opts.segment!)}');
     }
@@ -297,6 +300,9 @@ class LeaderboardsClient {
     }
     if (opts.limit != null) qs.add('limit=${opts.limit}');
     if (opts.maxSegments != null) qs.add('maxSegments=${opts.maxSegments}');
+    if (opts.progression != null && opts.progression!.isNotEmpty) {
+      qs.add('progression=${_enc(opts.progression!.join(','))}');
+    }
     // self_segment / mine need a caller; auto-resolve the active
     // identity when the dev didn't pass one explicitly.
     var externalId = opts.externalId;
@@ -349,6 +355,9 @@ class EventLeaderboardsClient {
     final opts = options ?? const EventLeaderboardReadOptions();
     final qs = <String>[];
     if (opts.limit != null) qs.add('limit=${opts.limit}');
+    if (opts.progression != null && opts.progression!.isNotEmpty) {
+      qs.add('progression=${_enc(opts.progression!.join(','))}');
+    }
     if (opts.includeSelf) {
       final selfId = (opts.externalId != null && opts.externalId!.isNotEmpty)
           ? opts.externalId!
