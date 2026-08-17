@@ -70,6 +70,10 @@ export 'src/types.dart' show
     FriendRequests,
     FriendSearchResult,
     FriendTarget,
+    Gift,
+    GiftCatalog,
+    GiftCounterparty,
+    GiftableResource,
     Grant,
     GrantEntryInput,
     Leaderboard,
@@ -97,6 +101,7 @@ export 'src/types.dart' show
     RewardPolicySummary,
     RewardPolicyTier,
     SendFriendRequestResult,
+    SendGiftInput,
     ServerTime,
     StandingsReadOptions,
     StandingsSegment;

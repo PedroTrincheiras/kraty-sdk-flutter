@@ -1109,6 +1109,14 @@ class PlayersClient {
 /// Builds the `?progression=level,trophies` query for the social-graph
 /// reads. Opt-in and explicit, because "the level" is a different economy
 /// key in every game; nothing extra is read server-side when omitted.
+String _giftQuery(bool pendingOnly, int? limit) {
+  final parts = <String>[
+    if (pendingOnly) 'status=pending',
+    if (limit != null) 'limit=$limit',
+  ];
+  return parts.isEmpty ? '' : '?${parts.join('&')}';
+}
+
 String _progressionQuery(List<String>? keys) {
   if (keys == null || keys.isEmpty) return '';
   return '?progression=${_enc(keys.join(','))}';
@@ -1377,6 +1385,117 @@ class FriendsClient {
           '/sdk/v1/players/${_enc(externalPlayerId)}/blocks/${_enc(blockedExternalId)}',
     );
   }
+
+  // ── Gifting ────────────────────────────────────────────────────────
+
+  /// `GET /sdk/v1/players/:externalId/friends/gifts/catalog`: what this
+  /// player may gift, and how often.
+  ///
+  /// Returns the studio's allowlist — every catalog row flagged giftable in
+  /// the dashboard — plus the game's cooldown / daily-limit config, so a gift
+  /// picker can be driven entirely from server config. `type: 'currency'`
+  /// entries include progression items like XP. Throws when the game hasn't
+  /// enabled gifting (`403 gifting_disabled`).
+  Future<GiftCatalog> giftCatalog({String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friends/gifts/catalog',
+    );
+    return _data<GiftCatalog>(env, (raw) {
+      if (raw is Map) return GiftCatalog.fromJson(raw.cast<String, Object?>());
+      return GiftCatalog.fromJson(const <String, Object?>{});
+    });
+  }
+
+  /// `POST /sdk/v1/players/:externalId/friends/gifts`: send a gift to an
+  /// accepted friend.
+  ///
+  /// The catalog decides what may travel and how much of it; when the
+  /// resource is configured to cost the sender, their balance is debited in
+  /// the same transaction. The recipient receives a PENDING grant that stays
+  /// unopened until they call [claimGift]. Pass an `idempotencyKey` so a
+  /// retry returns the original gift instead of failing the cooldown.
+  Future<Gift> sendGift(SendGiftInput input, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path: '/sdk/v1/players/${_enc(externalPlayerId)}/friends/gifts',
+      body: input.toJson(),
+    );
+    return _oneGift(env);
+  }
+
+  /// `GET /sdk/v1/players/:externalId/friends/gifts`: the player's gift
+  /// inbox, newest first. Set [pendingOnly] to narrow it to gifts still
+  /// waiting to be claimed.
+  Future<List<Gift>> gifts({
+    bool pendingOnly = false,
+    int? limit,
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/gifts${_giftQuery(pendingOnly, limit)}',
+    );
+    return _giftList(env);
+  }
+
+  /// `GET /sdk/v1/players/:externalId/friends/gifts/sent`: gifts this player
+  /// has sent, newest first.
+  Future<List<Gift>> sentGifts({
+    bool pendingOnly = false,
+    int? limit,
+    String? as,
+  }) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'GET',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/gifts/sent${_giftQuery(pendingOnly, limit)}',
+    );
+    return _giftList(env);
+  }
+
+  /// `POST /sdk/v1/players/:externalId/friends/gifts/:giftId/claim`: claim a
+  /// received gift.
+  ///
+  /// This is where a gift pays out: the delivering grant defers its deposit
+  /// to claim time, so an unopened gift is genuinely unopened. Replays on an
+  /// already-claimed gift return the same row.
+  Future<Gift> claimGift(String giftId, {String? as}) async {
+    final externalPlayerId = await _resolvePlayerId(_client, as);
+    final env = await _client.request(
+      method: 'POST',
+      path:
+          '/sdk/v1/players/${_enc(externalPlayerId)}/friends/gifts/${_enc(giftId)}/claim',
+    );
+    return _oneGift(env);
+  }
+
+  List<Gift> _giftList(Map<String, Object?> env) =>
+      _data<List<Gift>>(env, (raw) {
+        if (raw is Map) {
+          final gifts = raw['gifts'];
+          if (gifts is List) {
+            return gifts
+                .whereType<Map<String, Object?>>()
+                .map((e) => Gift.fromJson(e.cast<String, Object?>()))
+                .toList(growable: false);
+          }
+        }
+        return const <Gift>[];
+      });
+
+  Gift _oneGift(Map<String, Object?> env) => _data<Gift>(env, (raw) {
+        if (raw is Map) {
+          final gift = raw['gift'];
+          if (gift is Map) return Gift.fromJson(gift.cast<String, Object?>());
+        }
+        return Gift.fromJson(const <String, Object?>{});
+      });
 }
 
 /// Resource client for `/sdk/v1/catalog`: single-shot read of every

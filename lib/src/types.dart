@@ -1565,6 +1565,11 @@ class Friend {
   /// the friend never earned reads `0`.
   final Map<String, int>? progression;
 
+  /// ISO timestamp when this friend may be gifted again. `null` means
+  /// "giftable now" (or the game has gifting turned off), so a UI can treat
+  /// a non-null value as "disable the gift button until then".
+  final String? giftCooldownUntil;
+
   const Friend({
     required this.externalPlayerId,
     required this.displayIdentity,
@@ -1573,6 +1578,7 @@ class Friend {
     required this.lastActiveAt,
     required this.status,
     this.progression,
+    this.giftCooldownUntil,
   });
 
   factory Friend.fromJson(JsonMap json) => Friend(
@@ -1583,6 +1589,7 @@ class Friend {
         lastActiveAt: _readNullableString(json, 'lastActiveAt'),
         status: _readNullableString(json, 'status'),
         progression: _readProgression(json, 'progression'),
+        giftCooldownUntil: _readNullableString(json, 'giftCooldownUntil'),
       );
 }
 
@@ -1801,6 +1808,245 @@ class FriendTarget {
   JsonMap toJson() => <String, Object?>{
         if (friendCode != null) 'friendCode': friendCode,
         if (externalPlayerId != null) 'externalPlayerId': externalPlayerId,
+      };
+}
+
+/// One entry of the studio's gifting allowlist, from
+/// `friends.giftCatalog()`. [type] is `item` or `currency` — the latter
+/// covers progression items (XP, trophies) as well as spendable currencies,
+/// since both live in one catalog table.
+class GiftableResource {
+  final String type;
+  final String key;
+
+  /// Display name. A bare string, or a locale map when the studio localizes
+  /// its catalog — kept as `Object?` for that reason.
+  final Object? name;
+  final String? iconUrl;
+
+  /// Economy rows only: `currency` or `progression`.
+  final String? economyKind;
+
+  /// Item rows only.
+  final String? rarity;
+
+  /// Largest amount one gift of this resource may carry.
+  final int maxAmount;
+
+  /// Whether sending debits the sender's own holdings.
+  final bool costsSender;
+
+  const GiftableResource({
+    required this.type,
+    required this.key,
+    required this.name,
+    required this.iconUrl,
+    required this.economyKind,
+    required this.rarity,
+    required this.maxAmount,
+    required this.costsSender,
+  });
+
+  factory GiftableResource.fromJson(JsonMap json) => GiftableResource(
+        type: _readString(json, 'type'),
+        key: _readString(json, 'key'),
+        name: json['name'],
+        iconUrl: _readNullableString(json, 'iconUrl'),
+        economyKind: _readNullableString(json, 'economyKind'),
+        rarity: _readNullableString(json, 'rarity'),
+        maxAmount: _readInt(json, 'maxAmount'),
+        costsSender: _readBool(json, 'costsSender'),
+      );
+}
+
+/// The gifting allowlist plus the game's limits.
+class GiftCatalog {
+  final bool enabled;
+
+  /// Wait between two gifts to the SAME friend. `0` means no per-pair wait.
+  final int cooldownSeconds;
+
+  /// Rolling-24h cap across all friends; `null` means unlimited.
+  final int? dailySendLimit;
+
+  /// Gifts the caller already sent inside that window.
+  final int sentToday;
+  final List<GiftableResource> resources;
+
+  const GiftCatalog({
+    required this.enabled,
+    required this.cooldownSeconds,
+    required this.dailySendLimit,
+    required this.sentToday,
+    required this.resources,
+  });
+
+  factory GiftCatalog.fromJson(JsonMap json) {
+    final raw = json['resources'];
+    return GiftCatalog(
+      enabled: _readBool(json, 'enabled'),
+      cooldownSeconds: _readInt(json, 'cooldownSeconds'),
+      dailySendLimit: _readNullableInt(json, 'dailySendLimit'),
+      sentToday: _readInt(json, 'sentToday'),
+      resources: raw is List
+          ? raw
+              .whereType<Map<String, Object?>>()
+              .map((e) => GiftableResource.fromJson(e.cast<String, Object?>()))
+              .toList(growable: false)
+          : const <GiftableResource>[],
+    );
+  }
+}
+
+/// The other player on a gift: sender for incoming, recipient for outgoing.
+class GiftCounterparty {
+  final String externalPlayerId;
+  final PlayerIdentity? displayIdentity;
+
+  const GiftCounterparty({
+    required this.externalPlayerId,
+    required this.displayIdentity,
+  });
+
+  factory GiftCounterparty.fromJson(JsonMap json) => GiftCounterparty(
+        externalPlayerId: _readString(json, 'externalPlayerId'),
+        displayIdentity: _readIdentity(json, 'displayIdentity'),
+      );
+}
+
+/// A gift, from either side of the exchange.
+class Gift {
+  final String giftId;
+
+  /// The grant delivering it; also claimable through the grants API.
+  final String grantId;
+
+  /// One of `incoming`, `outgoing`.
+  final String direction;
+  final GiftCounterparty? player;
+
+  /// One of `item`, `currency`.
+  final String type;
+  final String resourceKey;
+  final int amount;
+  final String? message;
+
+  /// Mirrors the delivering grant: `pending` until claimed.
+  final String status;
+  final String sentAt;
+  final String? claimedAt;
+  final String? expiresAt;
+
+  const Gift({
+    required this.giftId,
+    required this.grantId,
+    required this.direction,
+    required this.player,
+    required this.type,
+    required this.resourceKey,
+    required this.amount,
+    required this.message,
+    required this.status,
+    required this.sentAt,
+    required this.claimedAt,
+    required this.expiresAt,
+  });
+
+  factory Gift.fromJson(JsonMap json) => Gift(
+        giftId: _readString(json, 'giftId'),
+        grantId: _readString(json, 'grantId'),
+        direction: _readString(json, 'direction'),
+        player: json['player'] is Map
+            ? GiftCounterparty.fromJson(
+                (json['player']! as Map).cast<String, Object?>(),
+              )
+            : null,
+        type: _readString(json, 'type'),
+        resourceKey: _readString(json, 'resourceKey'),
+        amount: _readInt(json, 'amount'),
+        message: _readNullableString(json, 'message'),
+        status: _readString(json, 'status'),
+        sentAt: _readString(json, 'sentAt'),
+        claimedAt: _readNullableString(json, 'claimedAt'),
+        expiresAt: _readNullableString(json, 'expiresAt'),
+      );
+}
+
+/// What to send and to whom, for `friends.sendGift(...)`. The target must be
+/// an accepted friend; build it with [SendGiftInput.toCode] or
+/// [SendGiftInput.toExternalPlayerId].
+class SendGiftInput {
+  final String? friendCode;
+  final String? externalPlayerId;
+
+  /// `item` or `currency`.
+  final String type;
+
+  /// Must name a catalog row the studio flagged giftable.
+  final String resourceKey;
+  final int amount;
+
+  /// Optional short note; trimmed to 140 chars server-side.
+  final String? message;
+
+  /// Replay guard: a retry with the same key returns the original gift
+  /// instead of tripping the per-friend cooldown.
+  final String? idempotencyKey;
+
+  const SendGiftInput._({
+    this.friendCode,
+    this.externalPlayerId,
+    required this.type,
+    required this.resourceKey,
+    required this.amount,
+    this.message,
+    this.idempotencyKey,
+  });
+
+  /// Send to a friend addressed by their shareable code.
+  factory SendGiftInput.toCode(
+    String friendCode, {
+    required String type,
+    required String resourceKey,
+    required int amount,
+    String? message,
+    String? idempotencyKey,
+  }) =>
+      SendGiftInput._(
+        friendCode: friendCode,
+        type: type,
+        resourceKey: resourceKey,
+        amount: amount,
+        message: message,
+        idempotencyKey: idempotencyKey,
+      );
+
+  /// Send to a friend addressed by their external player id.
+  factory SendGiftInput.toExternalPlayerId(
+    String externalPlayerId, {
+    required String type,
+    required String resourceKey,
+    required int amount,
+    String? message,
+    String? idempotencyKey,
+  }) =>
+      SendGiftInput._(
+        externalPlayerId: externalPlayerId,
+        type: type,
+        resourceKey: resourceKey,
+        amount: amount,
+        message: message,
+        idempotencyKey: idempotencyKey,
+      );
+
+  JsonMap toJson() => <String, Object?>{
+        if (friendCode != null) 'friendCode': friendCode,
+        if (externalPlayerId != null) 'externalPlayerId': externalPlayerId,
+        'type': type,
+        'resourceKey': resourceKey,
+        'amount': amount,
+        if (message != null) 'message': message,
+        if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
       };
 }
 
